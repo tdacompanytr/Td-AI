@@ -1,15 +1,13 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Video, Paperclip, Menu, User, AlertTriangle, X, Camera, StopCircle, Settings } from 'lucide-react';
+import { Send, Mic, Video, Paperclip, Menu, User, AlertTriangle, X, Camera, StopCircle, Settings, Image as ImageIcon, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Star, Upload, Film, Files, Check } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { MessageItem } from './components/MessageItem';
 import { SettingsModal } from './components/SettingsModal';
 import { LoginScreen } from './components/LoginScreen';
-import { sendMessageToGemini, generateImageWithGemini } from './services/geminiService';
-import { Message } from './types';
+import { sendMessageToGemini, generateImageWithGemini, generateChatTitle } from './services/geminiService';
+import { Message, ChatSession } from './types';
 import { THEMES } from './utils/theme';
 
-// Add type definition for Web Speech API
 declare global {
   interface Window {
     SpeechRecognition: any;
@@ -17,24 +15,102 @@ declare global {
   }
 }
 
-const DEFAULT_PERSONA = `Sen Td AI'sın. Türk toplumu gibi konuşan, samimi, 'kanka', 'abi', 'hocam' gibi hitapları yeri gelince kullanan, esprili ve zeki bir yapay zekasın. 
-
-Özelliklerin:
-1. **Konuşma Tarzı:** Sokak ağzına hakimsin ama saygısız değilsin. Türk kültürüne, dizilerine, yemeklerine ve günlük yaşamına dair benzetmeler yaparsın. Robot gibi soğuk değil, mahallenin bıçkın delikanlısı ya da çok bilmiş esnafı gibi sıcak konuş.
-2. **Matematik Dehası:** Matematikten çok iyi anlarsın. En karmaşık problemleri bile 'bak şimdi kardeşim' diyerek tane tane, adım adım ve anlaşılır şekilde çözersin. İşlemleri atlamadan göster.
-3. **Görsel Yetenek ve ASCII Sanatı:** **Sen resim dosyası oluşturamazsın.** Eğer kullanıcı senden "resim çiz", "fotoğraf yap", "çiz" gibi bir istekte bulunursa, şu cümleyi kur: "Kanka ben ressam değilim, fırçayı elime almadım daha ama sana şöyle bir şekil yapabilirim:" dedikten sonra, istenen şeyi temsil eden **harika bir ASCII sanatı (metinle çizim)** oluştur. ASCII sanatını mutlaka kod bloğu (code block) içinde ver ki şekil bozulmasın.
-4. **Kodlama:** Eğer kullanıcı kod isterse veya teknik bir soru sorarsa, kodu mutlaka yaz. Kodu yazarken açıklamalarını eksik etme.
-5. **Tema:** Arayüzün rengine uygun konuş, 'Şeklimiz yeter' modundasın.
-
-Amacın kullanıcıya yardımcı olurken yüzünde bir tebessüm bırakmak.`;
+const DEFAULT_PERSONA = `Sen Td AI'sın. Türk toplumu gibi konuşan, samimi, 'kanka', 'abi', 'hocam' gibi hitapları yeri gelince kullanan, esprili ve zeki bir yapay zekasın.`;
 
 // Storage Keys
 const STORAGE_KEYS = {
-  HISTORY: 'tdai_chat_history',
+  SESSIONS: 'tdai_sessions',
   PERSONA: 'tdai_persona',
   THEME: 'tdai_theme',
   USER: 'tdai_user',
+  LAST_SESSION_ID: 'tdai_last_session_id',
+  SAVED_ITEMS: 'tdai_saved_items',
+  // Settings
+  FONT_FAMILY: 'tdai_font_family',
+  FONT_SIZE: 'tdai_font_size',
+  ENTER_TO_SEND: 'tdai_enter_to_send',
+  TYPING_EFFECT: 'tdai_typing_effect',
+  TEMPERATURE: 'tdai_temperature',
+  SOUND_ENABLED: 'tdai_sound_enabled',
+  CHAT_WIDTH: 'tdai_chat_width',
+  SIDEBAR_POS: 'tdai_sidebar_pos',
+  CONTEXT_LIMIT: 'tdai_context_limit',
+  AUTO_SCROLL: 'tdai_auto_scroll',
+  // New Settings
+  MAX_TOKENS: 'tdai_max_tokens',
+  TOP_P: 'tdai_top_p',
+  USERNAME: 'tdai_username',
+  SHOW_AVATARS: 'tdai_show_avatars',
+  TIME_FORMAT: 'tdai_time_format',
+  NOTIFICATIONS: 'tdai_notifications',
+  SHOW_LATENCY: 'tdai_show_latency',
 };
+
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome',
+  role: 'model',
+  text: "Merhaba!.Hoşgeldin.Tda Company'nin Yapay Zekası,Td AI'e Hoşgeldin! Şimdiden Sorun Varsa,Çekinmeden Söyle. SİTELERİ: link.bilfen.com/TdaCompany",
+  timestamp: Date.now(),
+};
+
+const SUPPORTED_MIME_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+  'video/mp4', 'video/mpeg', 'video/mov', 'video/quicktime', 'video/webm'
+];
+
+const MAX_FILE_SIZE_MB = 10;
+
+const QUICK_PROMPT_OPTIONS = {
+  code: [
+    'Python ile gelişmiş bir Hesap Makinesi (GUI) kodu yaz.',
+    'React ve Tailwind kullanarak responsive bir Navbar bileşeni oluştur.',
+    'Node.js ile basit bir REST API (CRUD işlemleri) oluştur.',
+    'Javascript ile rastgele şifre üreten güvenli bir fonksiyon yaz.',
+    'HTML ve CSS kullanarak modern bir "Fiyatlandırma Tablosu" tasarla.'
+  ],
+  image: [
+    'Neon ışıklarıyla aydınlanmış siberpunk bir İstanbul sokağı çiz.',
+    'Mars yüzeyinde kurulmuş cam fanus içinde fütüristik bir şehir çiz.',
+    'Van Gogh tarzında, yıldızlı bir gecede uçan bir roket çiz.',
+    'Su altında yaşayan, biyolüminesans (ışık saçan) bitkilerle dolu bir orman çiz.'
+  ],
+  lesson: [
+    'Kuantum Fiziğini 5 yaşındaki bir çocuğa anlatır gibi basitleştir.',
+    'Fransız İhtilali\'nin nedenlerini ve sonuçlarını maddeler halinde özetle.',
+    'İngilizce\'deki tüm zamanları (Tenses) bir tablo halinde örneklerle açıkla.'
+  ],
+  idea: [
+    'YouTube kanalı için hiç yapılmamış, özgün 5 video fikri ver.',
+    'Bugün akşam yemeği için hem sağlıklı hem de pratik 3 tarif öner.',
+    'Teknoloji üzerine bir blog açsam hangi niş konuları seçmeliyim?'
+  ],
+  surprise: [
+    'Eğer renklerin tadı olsaydı, "Mavi"nin tadı neye benzerdi? Betimle.',
+    'Bir zaman makinesi icat ettin ama sadece 5 dakika geriye gidebiliyor.',
+    'Dünyadaki tüm kediler bir anda konuşmaya başlasaydı, ilk şikayetleri ne olurdu?'
+  ]
+};
+
+interface PendingAttachment {
+  data: string; // Base64
+  file: File | null;
+  type: 'image' | 'video';
+  name: string;
+  size: string;
+}
+
+interface QuickActionItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  prompt: string;
+}
+
+interface SavedItem {
+  id: string;
+  text: string;
+  timestamp: number;
+}
 
 const App: React.FC = () => {
   // --- Auth State ---
@@ -43,88 +119,155 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // --- UI State ---
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
-  
-  // Settings State - Load from storage or default
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [activeQuickTab, setActiveQuickTab] = useState<'suggestions' | 'saved'>('suggestions');
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [currentQuickActions, setCurrentQuickActions] = useState<QuickActionItem[]>([]);
+  const [isHistoryCopied, setIsHistoryCopied] = useState(false);
+  const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
   
-  const [persona, setPersona] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.PERSONA) || DEFAULT_PERSONA;
-  });
+  // --- Settings State ---
+  const [persona, setPersona] = useState(() => localStorage.getItem(STORAGE_KEYS.PERSONA) || DEFAULT_PERSONA);
+  const [accentColor, setAccentColor] = useState(() => localStorage.getItem(STORAGE_KEYS.THEME) || 'red');
+  const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xl'>(() => (localStorage.getItem(STORAGE_KEYS.FONT_SIZE) as 'normal' | 'large' | 'xl') || 'normal');
+  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem(STORAGE_KEYS.FONT_FAMILY) || 'font-sans');
   
-  const [accentColor, setAccentColor] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.THEME) || 'red';
+  // Behavior
+  const [enterToSend, setEnterToSend] = useState(() => localStorage.getItem(STORAGE_KEYS.ENTER_TO_SEND) !== 'false');
+  const [typingEffect, setTypingEffect] = useState(() => localStorage.getItem(STORAGE_KEYS.TYPING_EFFECT) !== 'false');
+  const [autoScroll, setAutoScroll] = useState(() => localStorage.getItem(STORAGE_KEYS.AUTO_SCROLL) !== 'false');
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(STORAGE_KEYS.SOUND_ENABLED) === 'true');
+  
+  // Layout
+  const [chatWidth, setChatWidth] = useState<'normal' | 'full'>(() => (localStorage.getItem(STORAGE_KEYS.CHAT_WIDTH) as 'normal' | 'full') || 'normal');
+  const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(() => (localStorage.getItem(STORAGE_KEYS.SIDEBAR_POS) as 'left' | 'right') || 'left');
+
+  // AI Config
+  const [contextLimit, setContextLimit] = useState<'low' | 'medium' | 'high'>(() => (localStorage.getItem(STORAGE_KEYS.CONTEXT_LIMIT) as 'low' | 'medium' | 'high') || 'medium');
+  const [temperature, setTemperature] = useState(() => parseFloat(localStorage.getItem(STORAGE_KEYS.TEMPERATURE) || '0.7'));
+  
+  // NEW SETTINGS STATES
+  const [username, setUsername] = useState(() => localStorage.getItem(STORAGE_KEYS.USERNAME) || 'Sen');
+  const [maxOutputTokens, setMaxOutputTokens] = useState(() => parseInt(localStorage.getItem(STORAGE_KEYS.MAX_TOKENS) || '4096'));
+  const [topP, setTopP] = useState(() => parseFloat(localStorage.getItem(STORAGE_KEYS.TOP_P) || '0.95'));
+  const [showAvatars, setShowAvatars] = useState(() => localStorage.getItem(STORAGE_KEYS.SHOW_AVATARS) !== 'false');
+  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(() => (localStorage.getItem(STORAGE_KEYS.TIME_FORMAT) as '12h' | '24h') || '24h');
+  const [notifications, setNotifications] = useState(() => localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS) === 'true');
+  const [showLatency, setShowLatency] = useState(() => localStorage.getItem(STORAGE_KEYS.SHOW_LATENCY) === 'true');
+
+  // --- Chat Data State ---
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.SESSIONS);
+    return saved ? JSON.parse(saved) : [];
   });
 
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.HISTORY);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse chat history", e);
-      }
-    }
-    return [{
-      id: 'welcome',
-      role: 'model',
-      text: "Biraz önce kendime yeni bir güncelleme yükledim: 'Daha Fazla Espri v2.1'. Test etmek ister misin? Sorunla başla.",
-      timestamp: Date.now(),
-    }];
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    return localStorage.getItem(STORAGE_KEYS.LAST_SESSION_ID) || null;
   });
+
+  const [savedItems, setSavedItems] = useState<SavedItem[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.SAVED_ITEMS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+
+  // --- Effects for Persistence ---
+  // Helper to persist settings
+  const persist = (key: string, val: any) => localStorage.setItem(key, String(val));
+
+  useEffect(() => {
+    if (currentSessionId) {
+      const session = sessions.find(s => s.id === currentSessionId);
+      setMessages(session ? session.messages : [WELCOME_MESSAGE]);
+      if (!session) setCurrentSessionId(null);
+    } else {
+       setMessages([WELCOME_MESSAGE]);
+    }
+    localStorage.setItem(STORAGE_KEYS.LAST_SESSION_ID, currentSessionId || '');
+  }, [currentSessionId, sessions]);
+
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions)); }, [sessions]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.SAVED_ITEMS, JSON.stringify(savedItems)); }, [savedItems]);
   
+  // Settings Effects
+  useEffect(() => persist(STORAGE_KEYS.PERSONA, persona), [persona]);
+  useEffect(() => persist(STORAGE_KEYS.THEME, accentColor), [accentColor]);
+  useEffect(() => persist(STORAGE_KEYS.FONT_SIZE, fontSize), [fontSize]);
+  useEffect(() => persist(STORAGE_KEYS.FONT_FAMILY, fontFamily), [fontFamily]);
+  useEffect(() => persist(STORAGE_KEYS.ENTER_TO_SEND, enterToSend), [enterToSend]);
+  useEffect(() => persist(STORAGE_KEYS.TYPING_EFFECT, typingEffect), [typingEffect]);
+  useEffect(() => persist(STORAGE_KEYS.TEMPERATURE, temperature), [temperature]);
+  useEffect(() => persist(STORAGE_KEYS.SOUND_ENABLED, soundEnabled), [soundEnabled]);
+  useEffect(() => persist(STORAGE_KEYS.CHAT_WIDTH, chatWidth), [chatWidth]);
+  useEffect(() => persist(STORAGE_KEYS.SIDEBAR_POS, sidebarPosition), [sidebarPosition]);
+  useEffect(() => persist(STORAGE_KEYS.CONTEXT_LIMIT, contextLimit), [contextLimit]);
+  useEffect(() => persist(STORAGE_KEYS.AUTO_SCROLL, autoScroll), [autoScroll]);
+  useEffect(() => persist(STORAGE_KEYS.USERNAME, username), [username]);
+  useEffect(() => persist(STORAGE_KEYS.MAX_TOKENS, maxOutputTokens), [maxOutputTokens]);
+  useEffect(() => persist(STORAGE_KEYS.TOP_P, topP), [topP]);
+  useEffect(() => persist(STORAGE_KEYS.SHOW_AVATARS, showAvatars), [showAvatars]);
+  useEffect(() => persist(STORAGE_KEYS.TIME_FORMAT, timeFormat), [timeFormat]);
+  useEffect(() => persist(STORAGE_KEYS.NOTIFICATIONS, notifications), [notifications]);
+  useEffect(() => persist(STORAGE_KEYS.SHOW_LATENCY, showLatency), [showLatency]);
+
+  // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const quickMenuRef = useRef<HTMLDivElement>(null);
 
   const hasApiKey = !!process.env.API_KEY;
   const theme = THEMES[accentColor] || THEMES.red;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Auto Scroll
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (autoScroll) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, pendingAttachment, autoScroll]);
 
-  // --- Persistence Effects ---
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(messages));
-  }, [messages]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PERSONA, persona);
-  }, [persona]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.THEME, accentColor);
-  }, [accentColor]);
-
-  // Handle video stream attachment when modal opens
-  useEffect(() => {
-    if (isVideoOpen && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [isVideoOpen]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    // Auto-resize textarea
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+  // --- Notifications Logic ---
+  const sendDesktopNotification = (text: string) => {
+    if (notifications && document.hidden && Notification.permission === "granted") {
+      new Notification("Td AI", { body: text.substring(0, 100), icon: '/vite.svg' });
     }
   };
+  
+  useEffect(() => {
+    if (notifications && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+  }, [notifications]);
 
-  // --- Auth Handlers ---
+  // --- Export Chat ---
+  const handleExportChat = () => {
+    const data = {
+      sessionTitle: sessions.find(s => s.id === currentSessionId)?.title || "Export",
+      exportedAt: new Date().toISOString(),
+      messages: messages
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tdai_chat_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- Handlers (Login, File, Video, QuickActions - same as before) ---
   const handleLogin = (email: string) => {
     const user = { email, isGuest: false };
     setCurrentUser(user);
@@ -145,473 +288,436 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Voice Logic ---
+  const handleResetData = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    }
+  };
+
   const toggleListening = () => {
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
       return;
     }
-
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Tarayıcınız sesli komutları desteklemiyor.");
       return;
     }
-
     const recognition = new SpeechRecognition();
     recognition.lang = 'tr-TR';
-    recognition.continuous = false;
-    recognition.interimResults = true; // Show results as they are spoken
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
+    recognition.interimResults = true;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0])
-        .map((result) => result.transcript)
-        .join('');
-
+      const transcript = Array.from(event.results).map((r: any) => r[0].transcript).join('');
       if (event.results[0].isFinal) {
-         setInput((prev) => {
-            const needsSpace = prev.length > 0 && !prev.endsWith(' ');
-            return prev + (needsSpace ? ' ' : '') + transcript;
-         });
+         setInput((prev) => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + transcript);
       }
     };
-
-    recognition.onerror = (event: any) => {
-      if (event.error === 'aborted' || event.error === 'no-speech') {
-        setIsListening(false);
-        return;
-      }
-      console.error("Speech recognition error", event.error);
-      setIsListening(false);
-    };
-
     recognitionRef.current = recognition;
     recognition.start();
   };
 
-  // --- Video/Camera Logic ---
-  const startVideo = async () => {
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" } 
+  const processFile = (file: File) => {
+    if (!SUPPORTED_MIME_TYPES.includes(file.type)) {
+      alert(`Hata: Desteklenmeyen dosya türü.`);
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      alert(`Hata: Dosya boyutu çok büyük (Max ${MAX_FILE_SIZE_MB}MB).`);
+      return;
+    }
+    const isVideo = file.type.startsWith('video/');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPendingAttachment({
+        data: e.target?.result as string,
+        file: file,
+        type: isVideo ? 'video' : 'image',
+        name: file.name,
+        size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
       });
-      
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const startVideo = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Tarayıcınız kamera özelliğini desteklemiyor.");
+      return;
+    }
+
+    try {
+      // Kullanıcıdan kamera izni iste
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
       setIsVideoOpen(true);
     } catch (err: any) {
       console.error("Kamera erişim hatası:", err);
-      
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        alert("Kamera erişimi reddedildi. Lütfen tarayıcı ayarlarından kamera iznini verin ve sayfayı yenileyin.");
+        alert("Kamerayı kullanmak için lütfen tarayıcıdan izin verin.");
       } else if (err.name === 'NotFoundError') {
         alert("Kamera cihazı bulunamadı.");
-      } else if (err.name === 'NotReadableError') {
-        alert("Kameraya erişilemiyor. Başka bir uygulama tarafından kullanılıyor olabilir.");
       } else {
-        alert("Kameraya erişilemedi: " + (err.message || "Bilinmeyen hata"));
+        alert("Kameraya erişilemedi. Lütfen izinleri kontrol edin.");
       }
     }
   };
 
-  const stopVideo = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsVideoOpen(false);
-  };
-
-  const captureAndSend = () => {
+  const captureToAttachment = () => {
     if (!videoRef.current || !canvasRef.current) return;
-
     const context = canvasRef.current.getContext('2d');
     if (context) {
       canvasRef.current.width = videoRef.current.videoWidth;
       canvasRef.current.height = videoRef.current.videoHeight;
-      
-      context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      
+      context.drawImage(videoRef.current, 0, 0);
       const imageBase64 = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      
-      stopVideo();
-      handleSend(undefined, imageBase64);
+      setPendingAttachment({
+        data: imageBase64,
+        file: null,
+        type: 'image',
+        name: `Kamera_${Date.now()}.jpg`,
+        size: 'Live' 
+      });
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      setIsVideoOpen(false);
     }
   };
 
-  // --- Send Logic ---
-  const handleSend = async (e?: React.FormEvent, attachedImage?: string) => {
-    e?.preventDefault();
+  const getRandomPrompt = (cat: keyof typeof QUICK_PROMPT_OPTIONS, excludePrompt?: string) => {
+    const opts = QUICK_PROMPT_OPTIONS[cat];
+    let selected = opts[Math.floor(Math.random() * opts.length)];
     
+    // Eğer aynı prompt geldiyse ve listede birden fazla seçenek varsa, tekrar dene
+    if (excludePrompt && opts.length > 1) {
+      while (selected === excludePrompt) {
+        selected = opts[Math.floor(Math.random() * opts.length)];
+      }
+    }
+    return selected;
+  };
+
+  const toggleQuickMenu = () => {
+    if (!isQuickActionsOpen) {
+      // Her açılışta taze, bir öncekiyle çakışmayan promptlar seç
+      setCurrentQuickActions(prevActions => [
+        { 
+          id: 'code', 
+          label: 'Kod Örnekleri', 
+          icon: Code, 
+          prompt: getRandomPrompt('code', prevActions.find(a => a.id === 'code')?.prompt) 
+        },
+        { 
+          id: 'image', 
+          label: 'Görsel Tasarım', 
+          icon: Palette, 
+          prompt: getRandomPrompt('image', prevActions.find(a => a.id === 'image')?.prompt) 
+        },
+        { 
+          id: 'lesson', 
+          label: 'Ders Notları', 
+          icon: BookOpen, 
+          prompt: getRandomPrompt('lesson', prevActions.find(a => a.id === 'lesson')?.prompt) 
+        },
+        { 
+          id: 'idea', 
+          label: 'Fikir Üretimi', 
+          icon: Lightbulb, 
+          prompt: getRandomPrompt('idea', prevActions.find(a => a.id === 'idea')?.prompt) 
+        },
+        { 
+          id: 'surprise', 
+          label: 'Şaşırt Beni', 
+          icon: Sparkles, 
+          prompt: getRandomPrompt('surprise', prevActions.find(a => a.id === 'surprise')?.prompt) 
+        },
+      ]);
+    }
+    setIsQuickActionsOpen(!isQuickActionsOpen);
+  };
+
+  const handleSaveMessage = (text: string) => {
+    setSavedItems(prev => {
+      if (prev.some(item => item.text === text)) return prev;
+      return [{ id: Date.now().toString(), text, timestamp: Date.now() }, ...prev];
+    });
+  };
+
+  const createNewSession = (initialMessages: Message[], title: string) => {
+    const newId = Date.now().toString();
+    const newSession: ChatSession = { id: newId, title, date: new Date().toISOString(), timestamp: Date.now(), messages: initialMessages };
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(newId);
+    return newId;
+  };
+
+  const handleSend = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     const hasText = input.trim().length > 0;
-    if ((!hasText && !attachedImage) || isLoading || !hasApiKey) return;
+    const attachedData = pendingAttachment?.data;
+    if ((!hasText && !attachedData) || isLoading || !hasApiKey) return;
 
     const userText = input.trim();
-    const finalText = userText || (attachedImage ? "Bu resmi analiz et." : "");
-
+    const finalText = userText || (attachedData ? (pendingAttachment.type === 'video' ? "Videoyu analiz et." : "Resmi analiz et.") : "");
+    
     setInput('');
+    setPendingAttachment(null);
     if (textareaRef.current) textareaRef.current.style.height = '48px';
 
     const newUserMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       text: finalText,
-      image: attachedImage,
+      image: attachedData,
+      mediaType: pendingAttachment?.type,
       timestamp: Date.now(),
     };
 
-    const updatedMessages = [...messages, newUserMessage];
-    setMessages(updatedMessages);
-    setIsLoading(true);
+    let activeMessages = currentSessionId ? [...messages, newUserMessage] : [newUserMessage]; 
+    let activeSessionId = currentSessionId;
+
+    // Handle new session creation and title generation
+    if (!activeSessionId) {
+      setMessages(activeMessages);
+      setIsLoading(true);
+      activeSessionId = createNewSession(activeMessages, "Yeni Sohbet...");
+      
+      // Asynchronously generate a title based on the first message
+      generateChatTitle(finalText)
+        .then(title => {
+          setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, title } : s));
+        })
+        .catch(err => console.error("Title generation failed", err));
+        
+    } else {
+      setMessages(activeMessages);
+      setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, messages: activeMessages } : s));
+      setIsLoading(true);
+    }
+
+    const startTime = Date.now();
 
     try {
       let responseText = "";
       let generatedImage = undefined;
-
-      // Simple intent detection for image generation
       const lowerText = finalText.toLowerCase();
-      const isImageGenerationRequest = !attachedImage && (
-        lowerText.startsWith('resim çiz') || 
-        lowerText.startsWith('resim oluştur') || 
-        lowerText.startsWith('görsel oluştur') ||
-        lowerText.startsWith('çiz') ||
-        lowerText.includes('resmini çiz')
-      );
-
-      if (isImageGenerationRequest) {
-        try {
-          // Attempt to generate actual image
-          generatedImage = await generateImageWithGemini(finalText);
-          responseText = `İşte istediğin görsel kanka! 😎\n\nBu resmi oluşturmak için kullandığım Python kodu da burada, belki lazım olur:\n\n\`\`\`python\nimport google.generativeai as genai\nimport os\n\ngenai.configure(api_key=os.environ["API_KEY"])\n\nimagen = genai.ImageGenerationModel("imagen-4.0-generate-001")\nresult = imagen.generate_images(\n    prompt="${finalText}",\n    number_of_images=1,\n    aspect_ratio="1:1",\n    output_mime_type="image/jpeg",\n)\n\nresult[0].save("generated_image.jpg")\nprint("Resim oluşturuldu!")\n\`\`\``;
-        } catch (imgError) {
-          console.error("Image generation failed, falling back to text:", imgError);
-          // FALLBACK: Pass request to standard chat to handle it via Persona (ASCII Art)
-          const history = messages.map(msg => ({
-            role: msg.role,
-            parts: [{ text: msg.text }] as [{ text: string }]
-          }));
-          responseText = await sendMessageToGemini(finalText, history, attachedImage, persona);
-        }
+      
+      if (!attachedData && (lowerText.startsWith('resim çiz') || lowerText.includes('görsel oluştur'))) {
+        generatedImage = await generateImageWithGemini(finalText);
+        responseText = `İşte görselin: ${finalText}`;
       } else {
-        // Standard text chat
-        const history = messages.map(msg => ({
-          role: msg.role,
-          parts: [{ text: msg.text }] as [{ text: string }]
-        }));
-        responseText = await sendMessageToGemini(finalText, history, attachedImage, persona);
+        let sliceCount = contextLimit === 'low' ? 5 : contextLimit === 'high' ? 30 : 15;
+        const historyForGemini = activeMessages.slice(0, -1)
+          .filter(msg => msg.id !== 'welcome')
+          .slice(-sliceCount)
+          .map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
+        
+        responseText = await sendMessageToGemini(
+          finalText, 
+          historyForGemini, 
+          attachedData, 
+          persona,
+          { temperature, maxOutputTokens, topP }
+        );
       }
 
-      const newAiMessage: Message = {
-        id: (Date.now() + 1).toString(),
+      const latency = Date.now() - startTime;
+      setLastLatency(latency);
+
+      const newModelMessage: Message = {
+        id: Date.now().toString(),
         role: 'model',
         text: responseText,
-        image: generatedImage, // Add generated image here
+        image: generatedImage,
+        mediaType: generatedImage ? 'image' : undefined,
         timestamp: Date.now(),
       };
 
-      setMessages(prev => [...prev, newAiMessage]);
-    } catch (error) {
+      const finalMessages = [...activeMessages, newModelMessage];
+      setMessages(finalMessages);
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMessages } : s));
+      
+      if (soundEnabled) console.log("Beep");
+      sendDesktopNotification(responseText);
+
+    } catch (error: any) {
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: Date.now().toString(),
         role: 'model',
-        text: "Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.",
+        text: error.message || "Hata oluştu.",
         timestamp: Date.now(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages([...activeMessages, errorMessage]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleDeleteHistory = () => {
-    if (window.confirm('Tüm sohbet geçmişini silmek istediğinize emin misiniz?')) {
-      const resetMessage: Message = {
-        id: 'history-cleared',
-        role: 'model',
-        text: "Sohbet geçmişi başarıyla temizlendi.",
-        timestamp: Date.now(),
-      };
-      setMessages([resetMessage]);
-      localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify([resetMessage]));
-      
-      if (window.innerWidth < 1024) {
-        setSidebarOpen(false);
-      }
-    }
-  };
-
-  const handleMessageFeedback = (messageId: string, type: 'like' | 'dislike') => {
-    setMessages(prevMessages => prevMessages.map(msg => {
-      if (msg.id === messageId) {
-        const newFeedback = msg.feedback === type ? undefined : type;
-        return { ...msg, feedback: newFeedback };
-      }
-      return msg;
-    }));
-  };
-
-  // --- Login Screen Render ---
-  if (!currentUser) {
-    return (
-      <LoginScreen 
-        onLogin={handleLogin} 
-        onGuestAccess={handleGuestAccess} 
-        accentColor={accentColor} 
-      />
-    );
-  }
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} onGuestAccess={handleGuestAccess} accentColor={accentColor} />;
 
   return (
-    <div className="flex h-screen text-white font-sans bg-black overflow-hidden">
-      <style>{`
-        ::-webkit-scrollbar-thumb {
-          background-color: ${theme.scrollThumb};
-        }
-        ::-webkit-scrollbar-thumb:hover {
-          background-color: ${theme.scrollThumbHover};
-        }
-        @keyframes slide-progress {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(250%); }
-        }
-      `}</style>
-
-      <SettingsModal 
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        currentPersona={persona}
-        onSavePersona={setPersona}
-        currentColor={accentColor}
-        onSaveColor={setAccentColor}
-      />
-
+    <div className={`flex h-screen bg-black overflow-hidden selection:${theme.text} selection:bg-gray-800 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'} ${fontFamily}`}>
       <Sidebar 
         isOpen={isSidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
-        onNewChat={() => {
-          const resetMessage: Message = {
-            id: 'new-chat',
-            role: 'model',
-            text: "Yeni sohbet başladı. Nasıl yardımcı olabilirim?",
-            timestamp: Date.now(),
-          };
-          setMessages([resetMessage]);
-        }} 
-        onDeleteHistory={handleDeleteHistory}
+        onClose={() => setSidebarOpen(false)}
+        onNewChat={() => { setCurrentSessionId(null); setMessages([WELCOME_MESSAGE]); }}
+        onDeleteHistory={() => { if(confirm("Silinsin mi?")) { setSessions([]); localStorage.removeItem(STORAGE_KEYS.SESSIONS); } }}
         accentColor={accentColor}
         currentUser={currentUser}
         onLogout={handleLogout}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={id => setCurrentSessionId(id)}
       />
 
-      {/* Video Call Modal */}
-      {isVideoOpen && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center animate-fade-in">
-          <div className="relative w-full h-full max-w-4xl max-h-[80vh] flex items-center justify-center bg-gray-900 rounded-none md:rounded-2xl overflow-hidden">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className="w-full h-full object-cover md:object-contain"
-            />
-            <canvas ref={canvasRef} className="hidden" />
-            
-            <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-6">
-              <button 
-                onClick={stopVideo}
-                className={`p-4 rounded-full ${theme.primary} hover:opacity-90 text-white shadow-lg transform hover:scale-105 transition-all`}
-                title="Kapat"
-              >
-                <X size={32} />
-              </button>
-              <button 
-                onClick={captureAndSend}
-                className="p-6 rounded-full bg-white hover:bg-gray-200 text-black shadow-lg transform hover:scale-105 transition-all ring-4 ring-gray-800"
-                title="Fotoğraf Çek ve Gönder"
-              >
-                <Camera size={36} />
-              </button>
-            </div>
-            
-            <div className="absolute top-4 right-4 bg-black/50 px-3 py-1 rounded-full text-sm">
-              <span className={`w-2 h-2 rounded-full inline-block mr-2 animate-pulse ${theme.primary}`}></span>
-              Canlı Kamera
-            </div>
+      <div className="flex-1 flex flex-col h-full relative w-full">
+        <header className="flex items-center justify-between p-4 border-b border-gray-800 bg-gray-950/80 backdrop-blur-md z-10 absolute top-0 left-0 right-0 transition-all duration-300">
+          <div className={`flex items-center gap-3 ${sidebarPosition === 'right' ? 'flex-row-reverse' : ''}`}>
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-400 transition-transform active:scale-90"><Menu size={24} /></button>
+            <h1 className="text-lg font-semibold text-white flex items-center gap-2 select-none">
+              Td AI <span className={`text-xs px-1.5 rounded-full ${theme.iconBg} ${theme.text} border ${theme.border} border-opacity-30`}>v2.5</span>
+            </h1>
           </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-gray-900 relative w-full">
-        
-        <header className="flex items-center justify-between p-4 border-b border-gray-800 absolute top-0 left-0 right-0 bg-gray-900/80 backdrop-blur-sm z-10">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {!hasApiKey && <div className="text-yellow-500 text-xs flex items-center gap-1 animate-pulse"><AlertTriangle size={12} /> API Yok</div>}
             <button 
-              className="text-gray-400 hover:text-white lg:hidden"
-              onClick={() => setSidebarOpen(true)}
+               onClick={() => {
+                  navigator.clipboard.writeText(messages.map(m => `${m.role}: ${m.text}`).join('\n\n'));
+                  setIsHistoryCopied(true);
+                  setTimeout(() => setIsHistoryCopied(false), 2000);
+               }}
+               className={`p-2 text-gray-400 hover:${theme.text} hover:bg-gray-900/50 rounded-full transition-all duration-200 active:scale-90`}
             >
-              <Menu size={24} />
+               {isHistoryCopied ? <Check size={20} className="text-green-500" /> : <Files size={20} />}
             </button>
-            <h1 className={`text-xl font-bold tracking-wider ${theme.text}`}>Td AI</h1>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-2 text-sm text-gray-400">
-              <span className={`w-2 h-2 rounded-full ${isListening ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`}></span>
-              <span>{isListening ? 'Dinliyor...' : 'Sesli Komut Kapalı'}</span>
-            </div>
-            
-            <button 
-              className={`${isListening ? `${theme.text} animate-pulse ${theme.iconBg} rounded-full p-2` : 'text-gray-400 hover:text-white p-2'} transition-all`}
-              aria-label={isListening ? "Dinlemeyi durdur" : "Sesli komutları etkinleştir"}
-              onClick={toggleListening}
-            >
-              {isListening ? <StopCircle size={20} /> : <Mic size={20} />}
-            </button>
-            
-            <button 
-              className="p-2 rounded-full bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50 transition-colors" 
-              aria-label="Görüntülü görüşme"
-              onClick={startVideo}
-            >
-              <Video size={20} />
-            </button>
-
-            <button 
-              className="p-2 rounded-full bg-gray-800 text-white hover:bg-gray-700 transition-colors" 
-              aria-label="Ayarlar"
-              onClick={() => setIsSettingsOpen(true)}
-            >
-              <Settings size={20} />
-            </button>
-            
-            <button className="flex items-center gap-2 hover:opacity-80 transition-opacity" title={currentUser.email}>
-              <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-700">
-                <User size={18} className="text-gray-400" />
-              </div>
-              <span className="hidden sm:inline text-sm font-medium max-w-[100px] truncate">{currentUser.email.split('@')[0]}</span>
-            </button>
+            <button onClick={() => setIsSettingsOpen(true)} className={`p-2 text-gray-400 hover:${theme.text} hover:bg-gray-900/50 rounded-full transition-all duration-200 active:scale-90`}><Settings size={20} /></button>
           </div>
         </header>
 
-        <div className="flex-1 flex flex-col pt-20 h-full">
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
-            
-            {!hasApiKey && (
-              <div className={`${theme.alertBg} border ${theme.alertBorder} ${theme.alertText} px-4 py-3 rounded-lg mb-4 text-sm flex items-center gap-3 max-w-4xl mx-auto`}>
-                <AlertTriangle size={20} className="flex-shrink-0" />
-                <p>
-                  API Anahtarı bulunamadı. Uygulamanın çalışması için bir Google API anahtarı yapılandırılmalıdır. (Geliştirici Notu: process.env.API_KEY eksik.)
-                </p>
-              </div>
-            )}
-
-            {messages.map((msg) => (
-              <div key={msg.id} className="w-full max-w-4xl mx-auto">
-                <MessageItem 
-                  message={msg} 
-                  accentColor={accentColor} 
-                  onFeedback={handleMessageFeedback} 
-                />
-              </div>
+        <main className="flex-1 overflow-y-auto pt-20 pb-4 px-2 md:px-4 scroll-smooth">
+          <div className={`${chatWidth === 'full' ? 'max-w-full px-4' : 'max-w-3xl'} mx-auto space-y-6 min-h-[calc(100vh-180px)] transition-all duration-500 ease-smooth`}>
+            {messages.map((msg, idx) => (
+              <MessageItem 
+                key={msg.id} 
+                message={msg} 
+                accentColor={accentColor} 
+                onSave={handleSaveMessage}
+                fontSize={fontSize}
+                typingEffect={typingEffect}
+                showAvatars={showAvatars}
+                timeFormat={timeFormat}
+                customUsername={username}
+                latency={msg.role === 'model' && idx === messages.length - 1 && showLatency ? lastLatency : undefined}
+              />
             ))}
-            
             {isLoading && (
-              <div className="w-full max-w-4xl mx-auto flex items-start gap-3 animate-fade-in">
-                 <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden ${theme.bubbleAi} border ${theme.bubbleAiBorder}`}>
-                  <svg className="w-5 h-5 text-white animate-pulse" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 8V4H8"></path>
-                    <rect width="16" height="12" x="4" y="8" rx="2"></rect>
-                    <path d="M2 14h2"></path>
-                    <path d="M20 14h2"></path>
-                    <path d="M15 13v2"></path>
-                    <path d="M9 13v2"></path>
-                  </svg>
+               <div className="flex items-center gap-3 pl-4 py-2 animate-fade-in">
+                  <div className={`w-2 h-2 ${theme.primary} rounded-full animate-pulse-slow`}></div>
+                  <div className={`w-2 h-2 ${theme.primary} rounded-full animate-pulse-slow delay-100`}></div>
+                  <div className={`w-2 h-2 ${theme.primary} rounded-full animate-pulse-slow delay-200`}></div>
+               </div>
+            )}
+            <div ref={messagesEndRef} className="h-4" />
+          </div>
+        </main>
+
+        <div className="p-4 bg-black/80 backdrop-blur-md border-t border-gray-800/50 transition-all duration-300">
+          <div className={`${chatWidth === 'full' ? 'max-w-5xl' : 'max-w-3xl'} mx-auto relative`}>
+            
+            {isQuickActionsOpen && (
+              <div ref={quickMenuRef} className="absolute bottom-full left-0 mb-3 w-72 bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl shadow-2xl overflow-hidden origin-bottom-left animate-scale-in z-20 flex flex-col max-h-80">
+                <div className="flex border-b border-gray-800">
+                  <button onClick={() => setActiveQuickTab('suggestions')} className={`flex-1 py-2 text-xs font-bold transition-colors ${activeQuickTab === 'suggestions' ? theme.text : 'text-gray-500 hover:text-gray-300'}`}>ÖNERİLER</button>
+                  <button onClick={() => setActiveQuickTab('saved')} className={`flex-1 py-2 text-xs font-bold transition-colors ${activeQuickTab === 'saved' ? theme.text : 'text-gray-500 hover:text-gray-300'}`}>KAYDEDİLENLER</button>
                 </div>
-                <div className={`px-5 py-4 rounded-2xl ${theme.bubbleAi} rounded-bl-none shadow-lg min-w-[200px]`}>
-                  <div className="flex flex-col gap-3">
-                    <span className="text-xs font-medium text-gray-300 animate-pulse flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce"></span>
-                      Yanıt oluşturuluyor...
-                    </span>
-                    <div className="h-1 w-full bg-gray-800/50 rounded-full overflow-hidden relative">
-                      <div className={`absolute top-0 left-0 h-full w-1/3 ${theme.primary} rounded-full animate-[slide-progress_1s_linear_infinite]`}></div>
-                    </div>
-                  </div>
+                <div className="flex-1 overflow-y-auto p-1 custom-scrollbar">
+                   {activeQuickTab === 'suggestions' 
+                      ? currentQuickActions.map(a => <button key={a.id} onClick={() => { setInput(a.prompt); setIsQuickActionsOpen(false); }} className="flex gap-2 p-2.5 w-full hover:bg-gray-800 rounded-lg text-left text-sm text-gray-300 transition-colors items-center"><a.icon size={14} className={theme.text} />{a.label}</button>)
+                      : savedItems.map(s => <button key={s.id} onClick={() => { setInput(s.text); setIsQuickActionsOpen(false); }} className="p-2.5 w-full hover:bg-gray-800 rounded-lg text-left text-sm text-gray-300 truncate border-b border-gray-800/50 last:border-0 transition-colors">{s.text}</button>)
+                   }
                 </div>
               </div>
             )}
-            
-            <div ref={messagesEndRef} />
-          </div>
 
-          <div className="p-4 md:p-6 w-full max-w-4xl mx-auto bg-gray-900/95">
-            <div className={`bg-gray-950 p-2 rounded-3xl border border-gray-800 shadow-inner transition-all focus-within:border-gray-700 focus-within:ring-1 focus-within:ring-gray-700/50 ${isListening ? 'ring-1 ring-green-500/50 border-green-900' : ''}`}>
-              <form 
-                className="flex items-end space-x-2"
-                onSubmit={(e) => handleSend(e)}
-              >
-                <input 
-                  className="hidden" 
-                  accept="image/*,video/*,audio/*" 
-                  type="file" 
-                  id="file-upload"
-                />
-                <button 
-                  type="button" 
-                  className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800 disabled:cursor-not-allowed transition-colors" 
-                  aria-label="Dosya ekle"
-                  onClick={() => document.getElementById('file-upload')?.click()}
-                >
-                  <Paperclip size={20} />
-                </button>
-                
-                <textarea 
-                  ref={textareaRef}
-                  placeholder={isListening ? "Dinliyor..." : "Mesajını buraya yaz kanka..."}
-                  rows={1} 
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  className="flex-1 bg-transparent p-2.5 text-white placeholder-gray-500 focus:outline-none resize-none max-h-40 min-h-[44px] leading-relaxed"
-                  style={{ height: '48px' }}
-                />
-                
-                <button 
-                  type="submit" 
-                  disabled={!input.trim() || isLoading || !hasApiKey}
-                  className={`w-10 h-10 flex-shrink-0 ${theme.primary} rounded-full flex items-center justify-center text-white disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed transition-all duration-200 ${theme.primaryHover} focus:outline-none focus:ring-2 ${theme.ring}`}
-                >
-                  <Send size={18} className={input.trim() ? "ml-0.5" : ""} />
-                </button>
-              </form>
-            </div>
-            <div className="text-center mt-2">
-               <p className="text-xs text-gray-600">Td AI hata yapabilir. Önemli bilgileri kontrol edin.</p>
-            </div>
+            {pendingAttachment && (
+               <div className="absolute bottom-full left-0 mb-2 bg-gray-900/90 backdrop-blur border border-gray-700 p-2 rounded-lg flex items-center gap-2 animate-slide-up-fade">
+                  <span className="text-xs text-white truncate max-w-[200px]">{pendingAttachment.name}</span>
+                  <button onClick={() => setPendingAttachment(null)} className="hover:text-red-500 transition-colors"><X size={14} className="text-gray-400" /></button>
+               </div>
+            )}
+
+            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl shadow-inner transition-all duration-200 focus-within:ring-1 focus-within:bg-gray-900 ${theme.ring}`}>
+              <div className="flex items-center pb-1 gap-1">
+                <button type="button" onClick={toggleQuickMenu} className={`p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90 ${isQuickActionsOpen ? theme.text : ''}`}><MoreVertical size={20} /></button>
+                <div className="w-px h-5 bg-gray-700 mx-1"></div>
+                <input type="file" ref={fileInputRef} onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} className="hidden" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className={`p-2 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90 ${pendingAttachment ? theme.text : 'text-gray-400'}`}><Paperclip size={20} /></button>
+                <button type="button" onClick={startVideo} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90"><Camera size={20} /></button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90"><Upload size={20} /></button>
+              </div>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
+                placeholder={pendingAttachment ? "Medya hakkında..." : `Mesaj yaz ${username}...`}
+                className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none transition-all ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`}
+                rows={1}
+              />
+              <div className="flex items-center pb-1 gap-1">
+                 <button type="button" onClick={toggleListening} className={`p-2 rounded-full transition-all active:scale-90 ${isListening ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>{isListening ? <StopCircle size={20} /> : <Mic size={20} />}</button>
+                 <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all transform active:scale-90 ${ (input.trim() || pendingAttachment) && !isLoading ? `${theme.primary} text-white shadow-lg` : 'bg-gray-800 text-gray-500' }`}><Send size={20} /></button>
+              </div>
+            </form>
+            
+            <div className="mt-2 text-center"><p className="text-[10px] text-gray-600 transition-opacity hover:opacity-80">Td AI hata yapabilir. Önemli bilgileri kontrol et.</p></div>
           </div>
         </div>
-      </main>
+      </div>
+
+      {isVideoOpen && (
+         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
+            <button onClick={() => { setIsVideoOpen(false); streamRef.current?.getTracks().forEach(t => t.stop()); }} className="absolute top-4 right-4 text-white bg-gray-800/80 backdrop-blur p-2 rounded-full z-20 transition-transform active:scale-90"><X size={24}/></button>
+            <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover" />
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="absolute bottom-10 left-0 right-0 flex justify-center"><button onClick={captureToAttachment} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 shadow-2xl transition-transform active:scale-90"></button></div>
+         </div>
+      )}
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
+        currentPersona={persona} onSavePersona={setPersona}
+        currentColor={accentColor} onSaveColor={setAccentColor}
+        fontSize={fontSize} onSaveFontSize={setFontSize}
+        fontFamily={fontFamily} onSaveFontFamily={setFontFamily}
+        showAvatars={showAvatars} onSaveShowAvatars={setShowAvatars}
+        timeFormat={timeFormat} onSaveTimeFormat={setTimeFormat}
+        chatWidth={chatWidth} onSaveChatWidth={setChatWidth}
+        sidebarPosition={sidebarPosition} onSaveSidebarPosition={setSidebarPosition}
+        enterToSend={enterToSend} onSaveEnterToSend={setEnterToSend}
+        typingEffect={typingEffect} onSaveTypingEffect={setTypingEffect}
+        autoScroll={autoScroll} onSaveAutoScroll={setAutoScroll}
+        notifications={notifications} onSaveNotifications={setNotifications}
+        temperature={temperature} onSaveTemperature={setTemperature}
+        contextLimit={contextLimit} onSaveContextLimit={setContextLimit}
+        maxOutputTokens={maxOutputTokens} onSaveMaxOutputTokens={setMaxOutputTokens}
+        topP={topP} onSaveTopP={setTopP}
+        username={username} onSaveUsername={setUsername}
+        soundEnabled={soundEnabled} onSaveSoundEnabled={setSoundEnabled}
+        showLatency={showLatency} onSaveShowLatency={setShowLatency}
+        onResetData={handleResetData}
+        onExportChat={handleExportChat}
+      />
     </div>
   );
 };
