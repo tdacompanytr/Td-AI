@@ -1,5 +1,4 @@
-
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 const apiKey = process.env.API_KEY;
 
@@ -57,6 +56,9 @@ export const sendMessageToGemini = async (
     temperature?: number;
     maxOutputTokens?: number;
     topP?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+    safetyLevel?: 'low' | 'medium' | 'high' | 'none';
   } = {}
 ): Promise<string> => {
   if (!ai) {
@@ -67,6 +69,22 @@ export const sendMessageToGemini = async (
     const modelName = 'gemini-2.5-flash';
     const defaultPersona = `Sen Td AI'sın. Yardımcı, zeki ve samimi bir yapay zeka asistanısın.`;
 
+    // Safety Settings Mapping
+    let safetySettings = [];
+    if (config.safetyLevel === 'none') {
+        safetySettings = [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ];
+    } else if (config.safetyLevel === 'high') {
+         safetySettings = [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+        ];
+    }
+
     const chat = ai.chats.create({
       model: modelName,
       history: history,
@@ -75,6 +93,9 @@ export const sendMessageToGemini = async (
         temperature: config.temperature ?? 0.7,
         maxOutputTokens: config.maxOutputTokens,
         topP: config.topP,
+        frequencyPenalty: config.frequencyPenalty,
+        presencePenalty: config.presencePenalty,
+        safetySettings: safetySettings,
       },
     });
 
@@ -112,6 +133,7 @@ export const sendMessageToGemini = async (
         { text: message }
       ];
 
+      // Pass parts directly as message for multimodal
       result = await chat.sendMessage({ 
         message: parts 
       });
