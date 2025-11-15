@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Volume2, Languages, Copy, Check, StopCircle, ThumbsUp, ThumbsDown, Terminal, Bookmark, ExternalLink, Activity, RotateCcw, Edit2 } from 'lucide-react';
+import { Volume2, Languages, Copy, Check, StopCircle, ThumbsUp, ThumbsDown, Terminal, Bookmark, ExternalLink, Activity, RotateCcw, Edit2, Download } from 'lucide-react';
 import { Message } from '../types';
 import { THEMES } from '../utils/theme';
 import { sendFeedback } from '../services/geminiService';
@@ -164,6 +164,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     sendFeedback(message.id, type, message.text.substring(0, 50));
   };
 
+  const handleDownloadImage = () => {
+    if (message.image && message.mediaType === 'image') {
+        const link = document.createElement('a');
+        link.href = message.image; // Base64 image data
+        link.download = `tdai_image_${message.id}.jpeg`; // Suggest a filename
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+  };
+
   // --- Custom Markdown Components ---
   const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     const match = /language-(\w+)/.exec(className || '');
@@ -225,7 +236,22 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <div className={`px-4 py-3 md:px-5 md:py-4 ${radiusClass} ${textSizeClass} overflow-hidden shadow-md transition-all duration-300 hover:shadow-lg ${isUser ? `${theme.bubbleUser} text-white rounded-br-none border ${theme.userBubbleBorder || theme.border} border-opacity-50` : `${theme.bubbleAi} text-white rounded-bl-none border ${theme.bubbleAiBorder} ${theme.bubbleAiShadow}`}`}>
           {message.image && (
             <div className={`mb-3 md:mb-4 -mx-4 -mt-3 md:-mx-5 md:-mt-4 overflow-hidden relative group/media ${radiusClass} rounded-b-none`}>
-              {message.mediaType === 'video' ? <video src={message.image} controls className="w-full h-auto max-h-80 object-contain bg-black/40" /> : <><div className="absolute inset-0 bg-black/0 group-hover/media:bg-black/10 transition-colors"></div><img src={message.image} alt="Görsel" className="w-full h-auto max-h-80 object-contain bg-black/20" /></>}
+              {message.mediaType === 'video' ? (
+                <video src={message.image} controls className="w-full h-auto max-h-80 object-contain bg-black/40" />
+              ) : (
+                <>
+                  <div className="absolute inset-0 bg-black/0 group-hover/media:bg-black/10 transition-colors"></div>
+                  <img src={message.image} alt="Görsel" className="w-full h-auto max-h-80 object-contain bg-black/20" />
+                  {/* Download button for images */}
+                  <button
+                    onClick={handleDownloadImage}
+                    className={`absolute top-2 right-2 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-opacity opacity-0 group-hover/media:opacity-100 flex items-center justify-center`}
+                    title="Görseli İndir"
+                  >
+                    <Download size={18} />
+                  </button>
+                </>
+              )}
             </div>
           )}
 
