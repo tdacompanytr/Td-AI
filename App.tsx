@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2, Image as ImageIcon, Phone, Ratio, Square, Smartphone, Monitor } from 'lucide-react';
+import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2, Image as ImageIcon, Phone, Ratio, Square, Smartphone, Monitor, Sliders, Wand2, Layers } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { MessageItem } from './components/MessageItem';
 import { SettingsModal } from './components/SettingsModal';
@@ -96,6 +96,17 @@ const SUPPORTED_MIME_TYPES = [
 ];
 
 const MAX_FILE_SIZE_MB = 10;
+
+// Image Generation Presets
+const IMAGE_STYLES = [
+  { id: 'none', label: 'Doğal', value: '' },
+  { id: 'cinematic', label: 'Sinematik', value: 'cinematic shot, dramatic lighting, hyperrealistic, 8k, movie scene' },
+  { id: 'anime', label: 'Anime', value: 'anime style, studio ghibli, vibrant colors, highly detailed' },
+  { id: 'cyberpunk', label: 'Siberpunk', value: 'cyberpunk, neon lights, futuristic, sci-fi, high tech' },
+  { id: 'oil', label: 'Yağlı Boya', value: 'oil painting, textured brushstrokes, classic art style' },
+  { id: '3d', label: '3D Render', value: '3d render, unreal engine 5, ray tracing, octane render' },
+  { id: 'sketch', label: 'Karakalem', value: 'pencil sketch, charcoal drawing, black and white, artistic' },
+];
 
 const QUICK_PROMPT_OPTIONS = {
   code: [
@@ -205,10 +216,12 @@ const App: React.FC = () => {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
-  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false); // New Mode Menu State
+  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
   const [activeModeId, setActiveModeId] = useState('default');
   const [isImageMode, setIsImageMode] = useState(false);
   const [imageAspectRatio, setImageAspectRatio] = useState<'1:1' | '16:9' | '9:16' | '4:3' | '3:4'>('1:1');
+  const [imageStyle, setImageStyle] = useState<string>('none');
+  const [imageQualityHD, setImageQualityHD] = useState(false);
   const [isLiveCallActive, setIsLiveCallActive] = useState(false);
   const [activeQuickTab, setActiveQuickTab] = useState<'suggestions' | 'saved'>('suggestions');
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
@@ -691,8 +704,19 @@ const App: React.FC = () => {
       if (responseStyle === 'verbose') modifiedPersona += " Cevapların çok detaylı, açıklayıcı ve kapsamlı olsun.";
 
       if (!attachedData && isImageGeneration) {
-        const cleanPrompt = promptForAI.replace(/^resim çiz[:\s]*/i, '');
-        const finalImagePrompt = cleanPrompt || promptForAI;
+        let cleanPrompt = promptForAI.replace(/^resim çiz[:\s]*/i, '');
+        let finalImagePrompt = cleanPrompt || promptForAI;
+
+        // Append Style modifiers
+        if (imageStyle && imageStyle !== 'none') {
+           const stylePrompt = IMAGE_STYLES.find(s => s.id === imageStyle)?.value;
+           if (stylePrompt) finalImagePrompt += `, ${stylePrompt}`;
+        }
+
+        // Append Quality modifiers
+        if (imageQualityHD) {
+           finalImagePrompt += ", 4k, highly detailed, high resolution, masterpiece, sharp focus";
+        }
 
         generatedImage = await generateImageWithGemini(finalImagePrompt, imageAspectRatio);
         responseText = `Görsel oluşturuldu: ${finalImagePrompt}`;
@@ -1133,23 +1157,59 @@ const App: React.FC = () => {
           <div className={`${chatWidth === 'full' ? 'max-w-5xl' : 'max-w-3xl'} mx-auto relative`}>
             {showTokenCount && <div className="absolute -top-6 right-0 text-[10px] text-gray-600 bg-gray-900 px-2 rounded">~{messages.reduce((acc, m) => acc + m.text.length / 4, 0).toFixed(0)} tokens</div>}
             
+            {/* Advanced Image Studio */}
             {isImageMode && (
-              <div className="absolute bottom-full left-0 mb-3 ml-1 flex gap-2 animate-slide-up-fade">
-                <div className="flex bg-gray-900/90 border border-gray-700 rounded-lg p-1 shadow-lg backdrop-blur-sm">
-                  {['1:1', '16:9', '9:16', '4:3', '3:4'].map(ratio => (
-                      <button 
-                        key={ratio} 
-                        onClick={() => setImageAspectRatio(ratio as any)} 
-                        className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${imageAspectRatio === ratio ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                      >
-                        {ratio}
-                      </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-1 bg-purple-900/20 border border-purple-500/30 rounded-lg px-2 text-[10px] font-bold text-purple-300 backdrop-blur-sm">
-                  <ImageIcon size={12} />
-                  GÖRSEL MODU
-                </div>
+              <div className="absolute bottom-full left-0 right-0 mb-4 animate-slide-up-fade bg-gray-900/95 border border-gray-700 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden">
+                 <div className="p-3 border-b border-gray-800 bg-gradient-to-r from-purple-900/30 to-transparent flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-purple-300 text-xs uppercase tracking-wider">
+                       <Wand2 size={14} /> Yaratıcı Stüdyo
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <button onClick={() => setImageQualityHD(!imageQualityHD)} className={`text-[10px] font-bold px-2 py-1 rounded border transition-all ${imageQualityHD ? 'bg-purple-600 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+                          {imageQualityHD ? 'HD+' : 'STD'}
+                       </button>
+                    </div>
+                 </div>
+                 <div className="p-3 space-y-3">
+                    {/* Aspect Ratio */}
+                    <div>
+                       <label className="text-[10px] text-gray-500 font-bold uppercase mb-1.5 block">En Boy Oranı</label>
+                       <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+                          {[
+                            { r: '1:1', label: 'Kare', icon: Square }, 
+                            { r: '16:9', label: 'Sinema', icon: Monitor }, 
+                            { r: '9:16', label: 'Hikaye', icon: Smartphone }, 
+                            { r: '4:3', label: 'TV', icon: Ratio }, 
+                            { r: '3:4', label: 'Portre', icon: Ratio }
+                          ].map((item) => (
+                              <button 
+                                key={item.r} 
+                                onClick={() => setImageAspectRatio(item.r as any)} 
+                                className={`flex flex-col items-center justify-center p-2 rounded-lg border min-w-[60px] transition-all ${imageAspectRatio === item.r ? 'bg-purple-900/20 border-purple-500 text-white' : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:bg-gray-800'}`}
+                              >
+                                 <item.icon size={16} className="mb-1" />
+                                 <span className="text-[9px] font-bold">{item.r}</span>
+                              </button>
+                          ))}
+                       </div>
+                    </div>
+                    
+                    {/* Styles */}
+                    <div>
+                       <label className="text-[10px] text-gray-500 font-bold uppercase mb-1.5 block">Sanat Stili</label>
+                       <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+                          {IMAGE_STYLES.map((style) => (
+                             <button 
+                                key={style.id} 
+                                onClick={() => setImageStyle(style.id)}
+                                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all ${imageStyle === style.id ? 'bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-900/50' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'}`}
+                             >
+                                {style.label}
+                             </button>
+                          ))}
+                       </div>
+                    </div>
+                 </div>
               </div>
             )}
 
