@@ -489,9 +489,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                    <ShortcutItem label="Yeni Sohbet" keys={['Ctrl', 'K']} />
                    <ShortcutItem label="Yan Menü" keys={['Ctrl', 'B']} />
-                   <ShortcutItem label="Ayarlar" keys={['Ctrl', '/']} />
+                   <ShortcutItem label="Ayarlar" keys={['Ctrl', ',']} />
                    <ShortcutItem label="Odak Modu" keys={['Ctrl', 'F']} />
                    <ShortcutItem label="Hızlı Menü" keys={['Ctrl', 'H']} />
+                   <ShortcutItem label="Canlı Arama" keys={['Ctrl', 'Alt', 'L']} />
+                   <ShortcutItem label="Gizli Mod" keys={['Ctrl', 'Shift', 'P']} />
+                   <ShortcutItem label="Kenar Çubuğu Yönü" keys={['Ctrl', 'Shift', 'S']} />
                    <ShortcutItem label="Tümünü Kapat" keys={['Esc']} />
                 </div>
               </div>
@@ -500,10 +503,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 px-1">Sohbet Eylemleri</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                    <ShortcutItem label="Mesajı Gönder" keys={['Enter']} />
+                   <ShortcutItem label="Dosya Yükle" keys={['Ctrl', 'U']} />
+                   <ShortcutItem label="Görsel Modu" keys={['Ctrl', 'I']} />
                    <ShortcutItem label="Alt Satır" keys={['Shift', 'Enter']} />
                    <ShortcutItem label="Sohbeti Temizle" keys={['Ctrl', 'L']} />
                    <ShortcutItem label="Yedekle (Export)" keys={['Ctrl', 'S']} />
                    <ShortcutItem label="Mikrofon" keys={['Ctrl', 'M']} />
+                   <ShortcutItem label="Son Yanıtı Kopyala" keys={['Ctrl', 'Shift', 'C']} />
                    <ShortcutItem label="Yeniden Üret" keys={['Ctrl', 'R']} />
                    <ShortcutItem label="En Alta Git" keys={['Ctrl', 'J']} />
                 </div>

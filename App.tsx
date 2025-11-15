@@ -128,6 +128,15 @@ const QUICK_PROMPT_OPTIONS = {
   ]
 };
 
+// Quick Mode Presets
+const APP_MODES = [
+  { id: 'default', label: 'Varsayılan', icon: Zap, desc: 'Dengeli ve yardımsever', persona: DEFAULT_PERSONA, temp: 0.7 },
+  { id: 'coder', label: 'Yazılımcı', icon: Terminal, desc: 'Kod odaklı, teknik ve net', persona: 'Sen dünyaca ünlü bir Kıdemli Yazılım Mühendisisin (Senior Software Engineer). Kodların her zaman en iyi pratiklere (best practices) uygun, temiz, performanslı ve güvenlidir. Açıklamaların teknik ve öğreticidir.', temp: 0.2 },
+  { id: 'creative', label: 'Yaratıcı Yazar', icon: Sparkles, desc: 'Hikaye ve fikir üretimi', persona: 'Sen ödüllü bir yazar ve yaratıcı yönetmensin. Hayal gücün sınırsız. Hikayeler, senaryolar ve metaforlar konusunda ustasın. Sıkıcı cevaplar verme, ilham ver.', temp: 0.9 },
+  { id: 'academic', label: 'Akademisyen', icon: BookOpen, desc: 'Detaylı ve öğretici', persona: 'Sen bir akademisyensin. Konuları derinlemesine, kaynaklara dayalı ve pedagojik bir dille anlatırsın. Bilgi vermeyi ve öğretmeyi seversin.', temp: 0.4 },
+  { id: 'minimalist', label: 'Minimalist', icon: Activity, desc: 'Sadece gerçekler, kısa', persona: 'Sen bir minimalist asistansın. Cevapların mümkün olduğunca kısa, net ve doğrudan konuya odaklıdır. Gereksiz nezaket sözcüklerini atar, sadece bilgiyi verirsin.', temp: 0.3 },
+];
+
 interface PendingAttachment {
   data: string; // Base64
   file: File | null;
@@ -196,6 +205,8 @@ const App: React.FC = () => {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false); // New Mode Menu State
+  const [activeModeId, setActiveModeId] = useState('default');
   const [isImageMode, setIsImageMode] = useState(false);
   const [imageAspectRatio, setImageAspectRatio] = useState<'1:1' | '16:9' | '9:16' | '4:3' | '3:4'>('1:1');
   const [isLiveCallActive, setIsLiveCallActive] = useState(false);
@@ -287,6 +298,10 @@ const App: React.FC = () => {
 
   const [savedItems, setSavedItems] = useState<SavedItem[]>(() => getInitialState(STORAGE_KEYS.SAVED_ITEMS, []));
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  
+  // Ref to hold latest messages for keydown listener to avoid stale closure issues
+  const messagesRef = useRef<Message[]>(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   // --- Persistence Effects ---
   const persist = (key: string, val: any) => {
@@ -392,6 +407,7 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const quickMenuRef = useRef<HTMLDivElement>(null);
   const mainContainerRef = useRef<HTMLDivElement>(null);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
 
   const hasApiKey = !!process.env.API_KEY;
   const theme = THEMES[accentColor] || THEMES.red;
@@ -407,6 +423,25 @@ const App: React.FC = () => {
      const isNearBottom = scrollHeight - scrollTop - clientHeight < 300;
      setShowScrollButton(!isNearBottom);
   };
+
+  // Close Mode Menu on Click Outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
+        setIsModeMenuOpen(false);
+      }
+    };
+    if (isModeMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isModeMenuOpen]);
+
+  // Camera stream handler
+  useEffect(() => {
+    if (isVideoOpen && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(err => console.log("Video play error", err));
+    }
+  }, [isVideoOpen]);
 
   // Notifications
   const sendDesktopNotification = (text: string) => {
@@ -451,6 +486,14 @@ const App: React.FC = () => {
         setCurrentUser(null);
         window.location.href = '/';
     }
+  };
+
+  const handleModeSelect = (mode: typeof APP_MODES[0]) => {
+    setActiveModeId(mode.id);
+    setPersona(mode.persona);
+    setTemperature(mode.temp);
+    setIsModeMenuOpen(false);
+    showToast(`${mode.label} modu aktif edildi`, "success");
   };
 
   const handleExportChat = () => {
@@ -749,27 +792,29 @@ const App: React.FC = () => {
     showToast("İşlem durduruldu", "info");
   };
 
-  // Global Shortcuts Effect - Moved to end to capture handlers in closure
+  // Global Shortcuts Effect - Updated with new shortcuts and useRef optimization
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!currentUser) return;
 
       const isCmd = e.metaKey || e.ctrlKey;
+      const isShift = e.shiftKey;
+      const isAlt = e.altKey;
 
-      // Open Settings: Ctrl + / or Ctrl + .
-      if (isCmd && (e.key === '/' || e.key === '.')) {
+      // Open Settings: Ctrl + / or Ctrl + . or Ctrl + ,
+      if (isCmd && (e.key === '/' || e.key === '.' || e.key === ',')) {
         e.preventDefault();
         setIsSettingsOpen(prev => !prev);
       }
 
       // Toggle Sidebar: Ctrl + B
-      if (isCmd && e.key === 'b') {
+      if (isCmd && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setSidebarOpen(prev => !prev);
       }
 
       // New Chat: Ctrl + K
-      if (isCmd && e.key === 'k') {
+      if (isCmd && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setCurrentSessionId(null);
         setMessages([WELCOME_MESSAGE]);
@@ -777,59 +822,116 @@ const App: React.FC = () => {
       }
 
       // Clear Chat: Ctrl + L
-      if (isCmd && e.key === 'l') {
+      // Check !isAlt because we use Ctrl+Alt+L for Live Call
+      if (isCmd && e.key.toLowerCase() === 'l' && !isAlt) {
         e.preventDefault();
-        if (messages.length > 1) handleClearChat();
+        if (messagesRef.current.length > 1) handleClearChat();
       }
 
       // Save/Export: Ctrl + S
-      if (isCmd && e.key === 's') {
+      if (isCmd && e.key.toLowerCase() === 's' && !isShift) {
         e.preventDefault();
         handleExportChat();
       }
 
+      // Sidebar Position: Ctrl + Shift + S
+      if (isCmd && isShift && e.key.toLowerCase() === 's') {
+         e.preventDefault();
+         setSidebarPosition(prev => prev === 'left' ? 'right' : 'left');
+         showToast("Kenar çubuğu yönü değiştirildi", "info");
+      }
+
       // Focus Mode: Ctrl + F
-      if (isCmd && e.key === 'f') {
+      if (isCmd && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setIsFocusMode(prev => !prev);
       }
 
       // Mic Toggle: Ctrl + M
-      if (isCmd && e.key === 'm') {
+      if (isCmd && e.key.toLowerCase() === 'm') {
         e.preventDefault();
         toggleListening();
       }
 
       // Regenerate: Ctrl + R
-      if (isCmd && e.key === 'r') {
+      if (isCmd && e.key.toLowerCase() === 'r') {
         e.preventDefault();
         handleRegenerate();
       }
 
       // Jump to Bottom: Ctrl + J
-      if (isCmd && e.key === 'j') {
+      if (isCmd && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
 
       // Quick Menu: Ctrl + H
-      if (isCmd && e.key === 'h') {
+      if (isCmd && e.key.toLowerCase() === 'h') {
         e.preventDefault();
         toggleQuickMenu();
       }
+
+      // --- NEW SHORTCUTS ---
       
-      // Escape to close everything
+      // Upload File: Ctrl + U
+      if (isCmd && e.key.toLowerCase() === 'u') {
+        e.preventDefault();
+        fileInputRef.current?.click();
+      }
+
+      // Image Mode Toggle: Ctrl + I
+      if (isCmd && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        setIsImageMode(prev => {
+           const newVal = !prev;
+           showToast(newVal ? "Görsel Modu: AÇIK" : "Görsel Modu: KAPALI", "info");
+           return newVal;
+        });
+      }
+
+      // Live Call: Ctrl + Alt + L
+      if (isCmd && isAlt && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setIsLiveCallActive(prev => !prev);
+      }
+
+      // Incognito Mode: Ctrl + Shift + P
+      if (isCmd && isShift && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setIncognitoMode(prev => {
+           const newVal = !prev;
+           showToast(newVal ? "Gizli Mod: AÇIK" : "Gizli Mod: KAPALI", "info");
+           return newVal;
+        });
+      }
+
+      // Copy Last Response: Ctrl + Shift + C
+      if (isCmd && isShift && e.key.toLowerCase() === 'c') {
+         e.preventDefault();
+         const currentMsgs = messagesRef.current;
+         const lastModelMsg = [...currentMsgs].reverse().find(m => m.role === 'model');
+         if (lastModelMsg) {
+             navigator.clipboard.writeText(lastModelMsg.text);
+             showToast("Son yanıt kopyalandı", "success");
+         } else {
+             showToast("Kopyalanacak yanıt yok", "error");
+         }
+      }
+      
+      // Escape
       if (e.key === 'Escape') {
         if (isSettingsOpen) setIsSettingsOpen(false);
         else if (isSidebarOpen) setSidebarOpen(false);
         else if (isVideoOpen) setIsVideoOpen(false);
         else if (isQuickActionsOpen) setIsQuickActionsOpen(false);
+        else if (isLiveCallActive) setIsLiveCallActive(false);
+        else if (isModeMenuOpen) setIsModeMenuOpen(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentUser, isSettingsOpen, isSidebarOpen, isVideoOpen, isQuickActionsOpen, messages.length, handleExportChat, toggleListening, handleRegenerate, handleClearChat]);
+  }, [currentUser, isSettingsOpen, isSidebarOpen, isVideoOpen, isQuickActionsOpen, isLiveCallActive, isModeMenuOpen, handleExportChat, toggleListening, handleRegenerate]); // removed messages from deps
 
   // --- Render Logic ---
 
@@ -880,6 +982,8 @@ const App: React.FC = () => {
   const bgClass = backgroundStyle === 'gradient' ? 'bg-gradient-to-br from-gray-900 to-black' : backgroundStyle === 'particles' ? 'bg-[url("https://grainy-gradients.vercel.app/noise.svg")] bg-gray-950' : 'bg-black';
   const fontWeightClass = fontWeight === 'light' ? 'font-light' : fontWeight === 'medium' ? 'font-medium' : fontWeight === 'bold' ? 'font-bold' : 'font-normal';
 
+  const activeModeLabel = APP_MODES.find(m => m.id === activeModeId)?.label || 'Varsayılan';
+
   return (
     <div className={`flex h-screen ${bgClass} overflow-hidden ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'} ${fontFamily} ${fontWeightClass} ${glassEffect && !highContrast ? 'backdrop-blur-sm' : ''} ${highContrast ? 'contrast-125 saturate-110' : ''}`}>
       {isWindowBlurred && <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-10"><EyeOff size={64} className="text-white mb-4"/><h2 className="text-2xl text-white">Gizli</h2></div>}
@@ -929,6 +1033,44 @@ const App: React.FC = () => {
             <button onClick={handleClearChat} className="p-2 text-gray-400 hover:text-red-400 transition-all" title="Sohbeti Temizle"><Eraser size={20}/></button>
             <button onClick={() => { navigator.clipboard.writeText(messages.map(m => `${m.role}: ${m.text}`).join('\n\n')); setIsHistoryCopied(true); setTimeout(() => setIsHistoryCopied(false), 2000); showToast("Geçmiş kopyalandı", "success"); }} className="p-2 text-gray-400 hover:text-white transition-all" title="Geçmişi Kopyala">{isHistoryCopied ? <Check size={20}/> : <Files size={20}/>}</button>
             <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white transition-all" title="Ayarlar"><Settings size={20} /></button>
+            
+            {/* --- QUICK MODE MENU (New Feature) --- */}
+            <div className="relative" ref={modeMenuRef}>
+              <button 
+                onClick={() => setIsModeMenuOpen(!isModeMenuOpen)} 
+                className={`p-2 rounded-full transition-all ${isModeMenuOpen ? `bg-gray-800 text-white ring-2 ring-gray-700` : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mod Değiştir"
+              >
+                <MoreVertical size={20} />
+              </button>
+              
+              {isModeMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-gray-950 border border-gray-800 rounded-xl shadow-2xl overflow-hidden animate-scale-in z-50 origin-top-right">
+                  <div className="p-3 border-b border-gray-800 bg-gray-900/50">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Hızlı Mod Seçimi</h3>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto custom-scrollbar p-1">
+                    {APP_MODES.map(mode => (
+                      <button
+                        key={mode.id}
+                        onClick={() => handleModeSelect(mode)}
+                        className={`w-full text-left p-3 rounded-lg flex items-start gap-3 transition-colors ${activeModeId === mode.id ? 'bg-gray-800' : 'hover:bg-gray-900'}`}
+                      >
+                        <div className={`p-2 rounded-md ${activeModeId === mode.id ? theme.primary : 'bg-gray-800 text-gray-400'}`}>
+                           <mode.icon size={16} className="text-white" />
+                        </div>
+                        <div>
+                          <div className={`text-sm font-bold ${activeModeId === mode.id ? 'text-white' : 'text-gray-300'}`}>{mode.label}</div>
+                          <div className="text-[10px] text-gray-500 leading-tight mt-0.5">{mode.desc}</div>
+                        </div>
+                        {activeModeId === mode.id && <Check size={14} className={`${theme.text} ml-auto mt-1`} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         </header>
 
@@ -1045,7 +1187,20 @@ const App: React.FC = () => {
                 <button type="button" onClick={() => fileInputRef.current?.click()} className={`p-2 hover:text-white transition-all ${pendingAttachment ? theme.text : 'text-gray-400'}`}><Paperclip size={20}/></button>
                 <button type="button" onClick={startVideo} className="p-2 text-gray-400 hover:text-white transition-all"><Camera size={20}/></button>
               </div>
-              <textarea ref={textareaRef} value={input} spellCheck={spellcheck} onChange={handleInputChange} onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}} placeholder={pendingAttachment ? "Medya..." : isImageMode ? "Görseli tarif et..." : `Mesaj yaz ${username}...`} className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`} rows={1} />
+              <textarea 
+                ref={textareaRef} 
+                value={input} 
+                spellCheck={spellcheck} 
+                onChange={handleInputChange} 
+                onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}} 
+                placeholder={
+                  pendingAttachment ? "Medya..." : 
+                  isImageMode ? "Görseli tarif et..." : 
+                  `Mesaj yaz (${activeModeLabel})...`
+                } 
+                className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`} 
+                rows={1} 
+              />
               <div className="absolute bottom-2 right-14 text-[10px] text-gray-600 font-mono pointer-events-none bg-gray-900/80 px-1 rounded">{input.length}</div>
               <div className="flex items-center pb-1 gap-1">
                  <button type="button" onClick={toggleListening} className={`p-2 rounded-full ${isListening ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}>{isListening ? <StopCircle size={20}/> : <Mic size={20}/>}</button>
@@ -1059,6 +1214,32 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Camera Modal */}
+      {isVideoOpen && (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-black rounded-3xl overflow-hidden border border-gray-800 shadow-2xl aspect-[4/3] md:aspect-video">
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]" /> {/* scale-x-[-1] for mirror effect */}
+            <canvas ref={canvasRef} className="hidden" />
+            
+            <div className="absolute top-4 right-4">
+              <button onClick={() => { 
+                setIsVideoOpen(false); 
+                streamRef.current?.getTracks().forEach(t => t.stop()); 
+              }} className="p-2 rounded-full bg-black/50 text-white hover:bg-red-600 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="absolute bottom-8 left-0 right-0 flex justify-center items-center gap-8">
+               <button onClick={captureToAttachment} className="w-16 h-16 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center hover:scale-110 transition-transform shadow-lg">
+                  <div className="w-12 h-12 rounded-full bg-white border-2 border-black"></div>
+               </button>
+            </div>
+          </div>
+          <p className="text-gray-500 mt-4 text-sm">Fotoğraf çekmek için butona basın</p>
+        </div>
+      )}
 
       <SettingsModal 
         isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)}
