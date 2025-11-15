@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, Type, Keyboard, Zap, Monitor, Sliders, Volume2, Trash2, Info, ShieldAlert, Layout, Maximize, Minimize, Cpu, ArrowDownCircle, UserCircle, Bell, Clock, Activity, Download, Settings, DownloadCloud, Lock, Eye, EyeOff, Hash, MousePointerClick, Globe, Sparkles, Fingerprint, Circle, Mic2, Speaker, Music, Layers, Palette, Box, Shield, Terminal, Command, Camera, FileText, Moon, Sun, Beaker, Sidebar, MessageSquare, Scale, LifeBuoy, Mail, Copy, Code, Image as ImageIcon } from 'lucide-react';
 import { THEMES } from '../utils/theme';
@@ -320,17 +321,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === 'intelligence' && (
             <div className="space-y-8 max-w-4xl mx-auto animate-fade-in">
               <section><div className="flex justify-between items-center mb-2"><label className="text-sm font-bold text-gray-300 flex items-center gap-2"><UserCircle size={16} /> Sistem Talimatı</label></div><textarea className="w-full h-32 bg-gray-950 border border-gray-800 rounded-xl p-4 text-sm text-gray-200 resize-none" value={personaText} onChange={(e) => setPersonaText(e.target.value)} /></section>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 {/* Basic AI Config */}
                  <div className="space-y-6 bg-gray-900/20 p-5 rounded-2xl border border-gray-800">
                     <div><div className="flex justify-between mb-2"><label className="text-xs font-bold text-gray-400">YARATICILIK</label><span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{temperature}</span></div><input type="range" min="0" max="1" step="0.1" value={temperature} onChange={(e) => onSaveTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" /></div>
                     <div><div className="flex justify-between mb-2"><label className="text-xs font-bold text-gray-400">MAX TOKENS</label><span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{maxOutputTokens}</span></div><input type="range" min="100" max="8192" step="100" value={maxOutputTokens} onChange={(e) => onSaveMaxOutputTokens(parseInt(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" /></div>
                  </div>
+                 
+                 {/* Advanced AI Config */}
                  <div className="space-y-6 bg-gray-900/20 p-5 rounded-2xl border border-gray-800">
-                    <div><div className="flex justify-between mb-2"><label className="text-xs font-bold text-gray-400">TEKRAR CEZASI</label><span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{frequencyPenalty}</span></div><input type="range" min="0" max="2" step="0.1" value={frequencyPenalty} onChange={(e) => onSaveFrequencyPenalty(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" /></div>
-                    <div><div className="flex justify-between mb-2"><label className="text-xs font-bold text-gray-400">KONU CEZASI</label><span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{presencePenalty}</span></div><input type="range" min="0" max="2" step="0.1" value={presencePenalty} onChange={(e) => onSavePresencePenalty(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" /></div>
+                    <h4 className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2 border-b border-gray-700 pb-2 mb-4"><Sliders size={14} /> Gelişmiş AI Yapılandırması</h4>
+                    
+                    {/* Top P */}
+                    <div>
+                      <div className="flex justify-between mb-2">
+                         <div className="flex flex-col">
+                           <label className="text-[10px] font-bold text-gray-400">TOP P (NÜKLEUS)</label>
+                           <span className="text-[9px] text-gray-500">Olasılık kütlesi & çeşitlilik.</span>
+                         </div>
+                         <span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{topP}</span>
+                      </div>
+                      <input type="range" min="0" max="1" step="0.05" value={topP} onChange={(e) => onSaveTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" />
+                    </div>
+
+                    {/* Frequency Penalty */}
+                    <div>
+                      <div className="flex justify-between mb-2">
+                         <div className="flex flex-col">
+                           <label className="text-[10px] font-bold text-gray-400">FREKANS CEZASI</label>
+                           <span className="text-[9px] text-gray-500">Kelime tekrarını engeller.</span>
+                         </div>
+                         <span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{frequencyPenalty}</span>
+                      </div>
+                      <input type="range" min="0" max="2" step="0.1" value={frequencyPenalty} onChange={(e) => onSaveFrequencyPenalty(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" />
+                    </div>
+
+                    {/* Presence Penalty */}
+                    <div>
+                      <div className="flex justify-between mb-2">
+                         <div className="flex flex-col">
+                           <label className="text-[10px] font-bold text-gray-400">VARLIK CEZASI</label>
+                           <span className="text-[9px] text-gray-500">Konu çeşitliliğini artırır.</span>
+                         </div>
+                         <span className={`text-xs font-bold px-2 py-0.5 rounded bg-gray-900 ${theme.text}`}>{presencePenalty}</span>
+                      </div>
+                      <input type="range" min="0" max="2" step="0.1" value={presencePenalty} onChange={(e) => onSavePresencePenalty(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer" />
+                    </div>
                  </div>
               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <SelectItem label="Güvenlik" value={safetyLevel} onChange={onSaveSafetyLevel} icon={ShieldAlert} options={[{label: 'Yok', value: 'none'}, {label: 'Düşük', value: 'low'}, {label: 'Yüksek', value: 'high'}]} />
                    <SelectItem label="Cevap Tarzı" value={responseStyle} onChange={onSaveResponseStyle} icon={MessageSquare} options={[{label: 'Kısa', value: 'concise'}, {label: 'Normal', value: 'normal'}, {label: 'Detaylı', value: 'verbose'}]} />
                    <ToggleItem label="Akış (Stream)" desc="Parça parça yanıt" checked={streamResponse} onChange={onSaveStreamResponse} icon={Zap} />
