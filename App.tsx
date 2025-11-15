@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info } from 'lucide-react';
+import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2 } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { MessageItem } from './components/MessageItem';
 import { SettingsModal } from './components/SettingsModal';
@@ -472,6 +472,30 @@ const App: React.FC = () => {
     showToast("Sohbet dışa aktarıldı", "success");
   };
 
+  const handleShareChat = async () => {
+    const url = window.location.href;
+    const shareData = {
+      title: 'Td AI Chatbot',
+      text: 'Td AI ile harika bir sohbet!',
+      url: url
+    };
+
+    try {
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        throw new Error("Web Share API unsupported");
+      }
+    } catch (err) {
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast("Bağlantı kopyalandı", "success");
+      } catch (e) {
+        showToast("Paylaşım yapılamadı", "error");
+      }
+    }
+  };
+
   const handleResetData = () => {
     if (!currentUser) return;
     const suffix = `_${currentUser.email}`;
@@ -802,6 +826,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             {!hasApiKey && <div className="text-yellow-500 text-xs flex items-center gap-1"><AlertTriangle size={12} /> API Yok</div>}
+            <button onClick={handleShareChat} className="p-2 text-gray-400 hover:text-blue-400 transition-all" title="Paylaş"><Share2 size={20}/></button>
             <button onClick={handleClearChat} className="p-2 text-gray-400 hover:text-red-400 transition-all" title="Sohbeti Temizle"><Eraser size={20}/></button>
             <button onClick={() => { navigator.clipboard.writeText(messages.map(m => `${m.role}: ${m.text}`).join('\n\n')); setIsHistoryCopied(true); setTimeout(() => setIsHistoryCopied(false), 2000); showToast("Geçmiş kopyalandı", "success"); }} className="p-2 text-gray-400 hover:text-white transition-all" title="Geçmişi Kopyala">{isHistoryCopied ? <Check size={20}/> : <Files size={20}/>}</button>
             <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white transition-all" title="Ayarlar"><Settings size={20} /></button>
