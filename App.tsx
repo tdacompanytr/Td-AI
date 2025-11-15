@@ -1,9 +1,11 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff } from 'lucide-react';
+import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { MessageItem } from './components/MessageItem';
 import { SettingsModal } from './components/SettingsModal';
 import { LoginScreen } from './components/LoginScreen';
+import { PrivacyModal } from './components/PrivacyModal';
 import { sendMessageToGemini, generateImageWithGemini, generateChatTitle } from './services/geminiService';
 import { Message, ChatSession } from './types';
 import { THEMES } from './utils/theme';
@@ -15,16 +17,17 @@ declare global {
   }
 }
 
-const DEFAULT_PERSONA = `Sen Td AI'sın. Türk toplumu gibi konuşan, samimi, 'kanka', 'abi', 'hocam' gibi hitapları yeri gelince kullanan, esprili ve zeki bir yapay zekasın.`;
+const DEFAULT_PERSONA = `Sen Td AI'sın. Türk toplumu gibi konuşan, samimi, 'kanka', 'abi', 'hocam' gibi hitapları yeri gelince kullanan, esprili ve zeki bir yapay zeka asistanısın.`;
 
 // Storage Keys
 const STORAGE_KEYS = {
   SESSIONS: 'tdai_sessions',
   PERSONA: 'tdai_persona',
   THEME: 'tdai_theme',
-  USER: 'tdai_user', // Global key to track "who" is logged in
+  USER: 'tdai_user', 
   LAST_SESSION_ID: 'tdai_last_session_id',
   SAVED_ITEMS: 'tdai_saved_items',
+  PRIVACY_POLICY: 'tdai_privacy_accepted_v1', // New Key
   // Settings
   FONT_FAMILY: 'tdai_font_family',
   FONT_SIZE: 'tdai_font_size',
@@ -39,7 +42,7 @@ const STORAGE_KEYS = {
   MAX_TOKENS: 'tdai_max_tokens',
   TOP_P: 'tdai_top_p',
   USERNAME: 'tdai_username',
-  USER_AVATAR: 'tdai_user_avatar', // New key for profile picture
+  USER_AVATAR: 'tdai_user_avatar',
   SHOW_AVATARS: 'tdai_show_avatars',
   TIME_FORMAT: 'tdai_time_format',
   NOTIFICATIONS: 'tdai_notifications',
@@ -64,13 +67,26 @@ const STORAGE_KEYS = {
   SHOW_TOKEN_COUNT: 'tdai_token_count',
   DEBUG_MODE: 'tdai_debug_mode',
   START_PAGE: 'tdai_start_page',
-  SPELLCHECK: 'tdai_spellcheck'
+  SPELLCHECK: 'tdai_spellcheck',
+  // Ultra New Settings
+  STREAM_RESPONSE: 'tdai_stream_response',
+  SHOW_TIMESTAMP: 'tdai_show_timestamp',
+  HIGH_CONTRAST: 'tdai_high_contrast',
+  EXPORT_FORMAT: 'tdai_export_format',
+  // Laboratory & Ultimate Settings
+  SIDEBAR_MODE: 'tdai_sidebar_mode',
+  FONT_WEIGHT: 'tdai_font_weight',
+  NOTIFICATION_SOUND: 'tdai_notif_sound',
+  RESPONSE_STYLE: 'tdai_response_style',
+  AUTO_TITLE: 'tdai_auto_title',
+  RENDER_LATEX: 'tdai_render_latex',
+  AUTO_DELETE: 'tdai_auto_delete'
 };
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'model',
-  text: "Merhaba!.Hoşgeldin.Tda Company'nin Yapay Zekası,Td AI'e Hoşgeldin! Şimdiden Sorun Varsa,Çekinmeden Söyle. SİTELERİ: link.bilfen.com/TdaCompany",
+  text: "Merhaba! Ben Td AI. Sana nasıl yardımcı olabilirim?",
   timestamp: Date.now(),
 };
 
@@ -133,6 +149,12 @@ interface SavedItem {
   timestamp: number;
 }
 
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 // Helper to get user-specific keys
 const getScopedKey = (key: string, email?: string) => {
   if (!email) return key;
@@ -140,7 +162,12 @@ const getScopedKey = (key: string, email?: string) => {
 };
 
 const App: React.FC = () => {
-  // --- Auth State Initialization (Read-only for init) ---
+  // --- Privacy Check ---
+  const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.PRIVACY_POLICY) === 'true';
+  });
+
+  // --- Auth State Initialization ---
   const initialUserString = localStorage.getItem(STORAGE_KEYS.USER);
   const initialUser = initialUserString ? JSON.parse(initialUserString) : null;
   const userEmail = initialUser?.email;
@@ -175,8 +202,11 @@ const App: React.FC = () => {
   const [isHistoryCopied, setIsHistoryCopied] = useState(false);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
   const [isWindowBlurred, setIsWindowBlurred] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   
-  // --- Settings State (Persistent & Scoped) ---
+  // --- Settings State ---
   const [persona, setPersona] = useState(() => getInitialState(STORAGE_KEYS.PERSONA, DEFAULT_PERSONA));
   const [accentColor, setAccentColor] = useState(() => getInitialState(STORAGE_KEYS.THEME, 'red'));
   const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xl'>(() => getInitialState(STORAGE_KEYS.FONT_SIZE, 'normal'));
@@ -192,11 +222,9 @@ const App: React.FC = () => {
   const [chatWidth, setChatWidth] = useState<'normal' | 'full'>(() => getInitialState(STORAGE_KEYS.CHAT_WIDTH, 'normal'));
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(() => getInitialState(STORAGE_KEYS.SIDEBAR_POS, 'left'));
 
-  // AI Config (Basic)
+  // AI Config
   const [contextLimit, setContextLimit] = useState<'low' | 'medium' | 'high'>(() => getInitialState(STORAGE_KEYS.CONTEXT_LIMIT, 'medium'));
   const [temperature, setTemperature] = useState(() => getInitialState(STORAGE_KEYS.TEMPERATURE, 0.7));
-  
-  // AI Config (Advanced)
   const [username, setUsername] = useState(() => getInitialState(STORAGE_KEYS.USERNAME, 'Sen'));
   const [userAvatar, setUserAvatar] = useState<string | null>(() => getInitialState(STORAGE_KEYS.USER_AVATAR, null));
   const [maxOutputTokens, setMaxOutputTokens] = useState(() => getInitialState(STORAGE_KEYS.MAX_TOKENS, 4096));
@@ -205,7 +233,7 @@ const App: React.FC = () => {
   const [presencePenalty, setPresencePenalty] = useState(() => getInitialState(STORAGE_KEYS.PRESENCE_PENALTY, 0));
   const [safetyLevel, setSafetyLevel] = useState<'low' | 'medium' | 'high' | 'none'>(() => getInitialState(STORAGE_KEYS.SAFETY_LEVEL, 'none'));
 
-  // Visuals (Advanced)
+  // Visuals
   const [showAvatars, setShowAvatars] = useState(() => getInitialState(STORAGE_KEYS.SHOW_AVATARS, true));
   const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(() => getInitialState(STORAGE_KEYS.TIME_FORMAT, '24h'));
   const [borderRadius, setBorderRadius] = useState<'small' | 'medium' | 'large' | 'full'>(() => getInitialState(STORAGE_KEYS.BORDER_RADIUS, 'large'));
@@ -218,7 +246,7 @@ const App: React.FC = () => {
   const [incognitoMode, setIncognitoMode] = useState(() => getInitialState(STORAGE_KEYS.INCOGNITO_MODE, false));
   const [hapticFeedback, setHapticFeedback] = useState(() => getInitialState(STORAGE_KEYS.HAPTIC_FEEDBACK, false));
 
-  // --- SUPER ADVANCED NEW SETTINGS ---
+  // Mega Advanced Settings
   const [uiDensity, setUiDensity] = useState<'compact' | 'comfortable'>(() => getInitialState(STORAGE_KEYS.UI_DENSITY, 'comfortable'));
   const [messageAlignment, setMessageAlignment] = useState<'modern' | 'classic'>(() => getInitialState(STORAGE_KEYS.MESSAGE_ALIGNMENT, 'modern'));
   const [backgroundStyle, setBackgroundStyle] = useState<'solid' | 'gradient' | 'particles'>(() => getInitialState(STORAGE_KEYS.BACKGROUND_STYLE, 'gradient'));
@@ -231,6 +259,21 @@ const App: React.FC = () => {
   const [startPage, setStartPage] = useState<'chat' | 'new' | 'history'>(() => getInitialState(STORAGE_KEYS.START_PAGE, 'chat'));
   const [spellcheck, setSpellcheck] = useState(() => getInitialState(STORAGE_KEYS.SPELLCHECK, true));
 
+  // Ultra New Settings
+  const [streamResponse, setStreamResponse] = useState(() => getInitialState(STORAGE_KEYS.STREAM_RESPONSE, true));
+  const [showTimestamp, setShowTimestamp] = useState(() => getInitialState(STORAGE_KEYS.SHOW_TIMESTAMP, true));
+  const [highContrast, setHighContrast] = useState(() => getInitialState(STORAGE_KEYS.HIGH_CONTRAST, false));
+  const [exportFormat, setExportFormat] = useState<'json' | 'txt' | 'md'>(() => getInitialState(STORAGE_KEYS.EXPORT_FORMAT, 'json'));
+
+  // Laboratory & Ultimate Settings
+  const [sidebarMode, setSidebarMode] = useState<'push' | 'overlay'>(() => getInitialState(STORAGE_KEYS.SIDEBAR_MODE, 'push'));
+  const [fontWeight, setFontWeight] = useState<'light' | 'normal' | 'medium' | 'bold'>(() => getInitialState(STORAGE_KEYS.FONT_WEIGHT, 'normal'));
+  const [notificationSound, setNotificationSound] = useState<'default' | 'subtle' | 'funky'>(() => getInitialState(STORAGE_KEYS.NOTIFICATION_SOUND, 'default'));
+  const [responseStyle, setResponseStyle] = useState<'concise' | 'normal' | 'verbose'>(() => getInitialState(STORAGE_KEYS.RESPONSE_STYLE, 'normal'));
+  const [autoTitle, setAutoTitle] = useState(() => getInitialState(STORAGE_KEYS.AUTO_TITLE, true));
+  const [renderLatex, setRenderLatex] = useState(() => getInitialState(STORAGE_KEYS.RENDER_LATEX, false));
+  const [autoDelete, setAutoDelete] = useState(() => getInitialState(STORAGE_KEYS.AUTO_DELETE, false));
+
   // --- Chat Data State ---
   const [sessions, setSessions] = useState<ChatSession[]>(() => getInitialState(STORAGE_KEYS.SESSIONS, []));
   
@@ -240,23 +283,16 @@ const App: React.FC = () => {
   });
 
   const [savedItems, setSavedItems] = useState<SavedItem[]>(() => getInitialState(STORAGE_KEYS.SAVED_ITEMS, []));
-
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
 
-  // --- Effects for Persistence (Scoped) ---
-  // Helper to persist settings scoped to user
+  // --- Persistence Effects ---
   const persist = (key: string, val: any) => {
     if (!currentUser) return;
     const scopedKey = getScopedKey(key, currentUser.email);
-    if (typeof val === 'object') {
-      localStorage.setItem(scopedKey, JSON.stringify(val));
-    } else {
-      localStorage.setItem(scopedKey, String(val));
-    }
+    localStorage.setItem(scopedKey, typeof val === 'object' ? JSON.stringify(val) : String(val));
   };
 
   useEffect(() => {
-    // Window Blur/Focus for Privacy Shield
     const handleBlur = () => blurOnLeave && setIsWindowBlurred(true);
     const handleFocus = () => setIsWindowBlurred(false);
     window.addEventListener('blur', handleBlur);
@@ -268,9 +304,7 @@ const App: React.FC = () => {
   }, [blurOnLeave]);
 
   useEffect(() => {
-    if (incognitoMode) {
-      return; 
-    }
+    if (incognitoMode) return;
     if (currentSessionId) {
       const session = sessions.find(s => s.id === currentSessionId);
       setMessages(session ? session.messages : [WELCOME_MESSAGE]);
@@ -284,14 +318,12 @@ const App: React.FC = () => {
   }, [currentSessionId, sessions, incognitoMode, currentUser]);
 
   useEffect(() => { 
-    if (!incognitoMode) {
-      persist(STORAGE_KEYS.SESSIONS, sessions); 
-    }
+    if (!incognitoMode) persist(STORAGE_KEYS.SESSIONS, sessions); 
   }, [sessions, incognitoMode, currentUser]);
 
   useEffect(() => { persist(STORAGE_KEYS.SAVED_ITEMS, savedItems); }, [savedItems, currentUser]);
   
-  // Settings Effects
+  // All Settings Persistence
   useEffect(() => persist(STORAGE_KEYS.PERSONA, persona), [persona, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.THEME, accentColor), [accentColor, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.FONT_SIZE, fontSize), [fontSize, currentUser]);
@@ -313,7 +345,7 @@ const App: React.FC = () => {
   useEffect(() => persist(STORAGE_KEYS.NOTIFICATIONS, notifications), [notifications, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.SHOW_LATENCY, showLatency), [showLatency, currentUser]);
   
-  // Advanced Settings Effects
+  // Advanced
   useEffect(() => persist(STORAGE_KEYS.BORDER_RADIUS, borderRadius), [borderRadius, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.ANIMATION_SPEED, animationSpeed), [animationSpeed, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.SHOW_LINE_NUMBERS, showLineNumbers), [showLineNumbers, currentUser]);
@@ -322,8 +354,6 @@ const App: React.FC = () => {
   useEffect(() => persist(STORAGE_KEYS.SAFETY_LEVEL, safetyLevel), [safetyLevel, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.INCOGNITO_MODE, incognitoMode), [incognitoMode, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.HAPTIC_FEEDBACK, hapticFeedback), [hapticFeedback, currentUser]);
-  
-  // Mega Advanced Settings Effects
   useEffect(() => persist(STORAGE_KEYS.UI_DENSITY, uiDensity), [uiDensity, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.MESSAGE_ALIGNMENT, messageAlignment), [messageAlignment, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.BACKGROUND_STYLE, backgroundStyle), [backgroundStyle, currentUser]);
@@ -335,7 +365,19 @@ const App: React.FC = () => {
   useEffect(() => persist(STORAGE_KEYS.DEBUG_MODE, debugMode), [debugMode, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.START_PAGE, startPage), [startPage, currentUser]);
   useEffect(() => persist(STORAGE_KEYS.SPELLCHECK, spellcheck), [spellcheck, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.STREAM_RESPONSE, streamResponse), [streamResponse, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.SHOW_TIMESTAMP, showTimestamp), [showTimestamp, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.HIGH_CONTRAST, highContrast), [highContrast, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.EXPORT_FORMAT, exportFormat), [exportFormat, currentUser]);
 
+  // Ultimate Persistence
+  useEffect(() => persist(STORAGE_KEYS.SIDEBAR_MODE, sidebarMode), [sidebarMode, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.FONT_WEIGHT, fontWeight), [fontWeight, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.NOTIFICATION_SOUND, notificationSound), [notificationSound, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.RESPONSE_STYLE, responseStyle), [responseStyle, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.AUTO_TITLE, autoTitle), [autoTitle, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.RENDER_LATEX, renderLatex), [renderLatex, currentUser]);
+  useEffect(() => persist(STORAGE_KEYS.AUTO_DELETE, autoDelete), [autoDelete, currentUser]);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -346,6 +388,7 @@ const App: React.FC = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const quickMenuRef = useRef<HTMLDivElement>(null);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
 
   const hasApiKey = !!process.env.API_KEY;
   const theme = THEMES[accentColor] || THEMES.red;
@@ -355,7 +398,14 @@ const App: React.FC = () => {
     if (autoScroll) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, pendingAttachment, autoScroll]);
 
-  // --- Notifications Logic ---
+  // Scroll Listener for Floating Button
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+     const isNearBottom = scrollHeight - scrollTop - clientHeight < 300;
+     setShowScrollButton(!isNearBottom);
+  };
+
+  // Notifications
   const sendDesktopNotification = (text: string) => {
     if (notifications && document.hidden && Notification.permission === "granted") {
       new Notification("Td AI", { body: text.substring(0, 100), icon: '/vite.svg' });
@@ -363,70 +413,77 @@ const App: React.FC = () => {
   };
   
   useEffect(() => {
-    if (notifications && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
+    if (notifications && Notification.permission !== "granted") Notification.requestPermission();
   }, [notifications]);
 
-  // Haptic Trigger
   const triggerHaptic = () => {
-     if (hapticFeedback && navigator.vibrate) {
-        navigator.vibrate(50);
-     }
+     if (hapticFeedback && navigator.vibrate) navigator.vibrate(50);
   };
 
-  // --- Export Chat ---
-  const handleExportChat = () => {
-    const data = {
-      sessionTitle: sessions.find(s => s.id === currentSessionId)?.title || "Export",
-      exportedAt: new Date().toISOString(),
-      messages: messages,
-      settings: {
-          persona, accentColor, fontSize, fontFamily
-      }
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `tdai_chat_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   };
 
-  // --- Handlers (Login, File, Video, QuickActions) ---
+  const handleAcceptPrivacy = () => {
+    localStorage.setItem(STORAGE_KEYS.PRIVACY_POLICY, 'true');
+    setIsPrivacyAccepted(true);
+  };
+
+  // --- Handlers ---
   const handleLogin = (email: string) => {
-    const user = { email, isGuest: false };
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
-    // Force reload to initialize state with new user's data scope
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ email, isGuest: false }));
     window.location.reload();
   };
 
   const handleGuestAccess = () => {
-    const user = { email: 'Misafir Kullanıcı', isGuest: true };
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ email: 'Misafir Kullanıcı', isGuest: true }));
     window.location.reload();
   };
 
   const handleLogout = () => {
     if (window.confirm('Çıkış yapmak istediğinize emin misiniz?')) {
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      window.location.reload();
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        setCurrentUser(null);
+        window.location.href = '/';
     }
+  };
+
+  const handleExportChat = () => {
+    const sessionTitle = sessions.find(s => s.id === currentSessionId)?.title || "Export";
+    let content = '', mimeType = 'application/json', extension = 'json';
+
+    if (exportFormat === 'json') {
+        content = JSON.stringify({ sessionTitle, exportedAt: new Date().toISOString(), messages, settings: { persona, accentColor } }, null, 2);
+        mimeType = 'application/json'; extension = 'json';
+    } else if (exportFormat === 'txt') {
+        content = messages.map(m => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.role}: ${m.text}`).join('\n\n');
+        mimeType = 'text/plain'; extension = 'txt';
+    } else if (exportFormat === 'md') {
+        content = `# ${sessionTitle}\n\n` + messages.map(m => `### ${m.role}\n${m.text}`).join('\n\n---\n\n');
+        mimeType = 'text/markdown'; extension = 'md';
+    }
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([content], { type: mimeType }));
+    link.download = `tdai_chat.${extension}`;
+    link.click();
+    showToast("Sohbet dışa aktarıldı", "success");
   };
 
   const handleResetData = () => {
     if (!currentUser) return;
-    // Only remove keys for this user
     const suffix = `_${currentUser.email}`;
-    Object.keys(localStorage).forEach(key => {
-      if (key.endsWith(suffix)) {
-        localStorage.removeItem(key);
-      }
-    });
+    Object.keys(localStorage).forEach(key => { if (key.endsWith(suffix)) localStorage.removeItem(key); });
     window.location.reload();
+  };
+
+  const handleClearChat = () => {
+     if(window.confirm('Mevcut sohbet ekranı temizlensin mi?')) {
+        setMessages([WELCOME_MESSAGE]);
+        showToast("Ekran temizlendi", "info");
+     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -444,436 +501,422 @@ const App: React.FC = () => {
       setIsListening(false);
       return;
     }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Tarayıcınız sesli komutları desteklemiyor.");
-      return;
-    }
-    const recognition = new SpeechRecognition();
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return alert("Tarayıcı desteklemiyor.");
+    const recognition = new SR();
     recognition.lang = 'tr-TR';
     recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
-    
-    recognition.onresult = (event: any) => {
-      // Get the last result which is the most relevant for the current phrase
-      const lastResultIndex = event.results.length - 1;
-      const transcript = event.results[lastResultIndex][0].transcript;
-      
-      // If it's final, append it. If interim, we might want to show it differently but for simplicity we append only finals or current interim
-      if (event.results[lastResultIndex].isFinal) {
-         setInput((prev) => {
-             const needsSpace = prev.length > 0 && !prev.endsWith(' ');
-             return prev + (needsSpace ? ' ' : '') + transcript;
-         });
+    recognition.onresult = (e: any) => {
+      if (e.results[e.results.length - 1].isFinal) {
+         setInput(p => p + (p ? ' ' : '') + e.results[e.results.length - 1][0].transcript);
       }
     };
-    
     recognitionRef.current = recognition;
     recognition.start();
   };
 
   const processFile = (file: File) => {
-    if (!SUPPORTED_MIME_TYPES.includes(file.type)) {
-      alert(`Hata: Desteklenmeyen dosya türü.`);
-      return;
-    }
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      alert(`Hata: Dosya boyutu çok büyük (Max ${MAX_FILE_SIZE_MB}MB).`);
-      return;
-    }
-    const isVideo = file.type.startsWith('video/');
+    if (!SUPPORTED_MIME_TYPES.includes(file.type) || file.size > MAX_FILE_SIZE_MB * 1024 * 1024) return alert("Geçersiz dosya.");
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setPendingAttachment({
-        data: e.target?.result as string,
-        file: file,
-        type: isVideo ? 'video' : 'image',
-        name: file.name,
-        size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
-      });
-    };
+    reader.onload = (e) => setPendingAttachment({
+        data: e.target?.result as string, file, type: file.type.startsWith('video/') ? 'video' : 'image',
+        name: file.name, size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
+    });
     reader.readAsDataURL(file);
   };
 
   const startVideo = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Tarayıcınız kamera özelliğini desteklemiyor.");
-      return;
-    }
-
     try {
-      // Kullanıcıdan kamera izni iste
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
       setIsVideoOpen(true);
-    } catch (err: any) {
-      console.error("Kamera erişim hatası:", err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        alert("Kamerayı kullanmak için lütfen tarayıcıdan izin verin.");
-      } else if (err.name === 'NotFoundError') {
-        alert("Kamera cihazı bulunamadı.");
-      } else {
-        alert("Kameraya erişilemedi. Lütfen izinleri kontrol edin.");
-      }
-    }
+    } catch (err) { alert("Kamera izni gerekli."); }
   };
 
   const captureToAttachment = () => {
     triggerHaptic();
     if (!videoRef.current || !canvasRef.current) return;
-    const context = canvasRef.current.getContext('2d');
-    if (context) {
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      context.drawImage(videoRef.current, 0, 0);
-      const imageBase64 = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      setPendingAttachment({
-        data: imageBase64,
-        file: null,
-        type: 'image',
-        name: `Kamera_${Date.now()}.jpg`,
-        size: 'Live' 
-      });
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      setIsVideoOpen(false);
-    }
-  };
-
-  const getRandomPrompt = (cat: keyof typeof QUICK_PROMPT_OPTIONS, excludePrompt?: string) => {
-    const opts = QUICK_PROMPT_OPTIONS[cat];
-    let selected = opts[Math.floor(Math.random() * opts.length)];
-    
-    // Eğer aynı prompt geldiyse ve listede birden fazla seçenek varsa, tekrar dene
-    if (excludePrompt && opts.length > 1) {
-      while (selected === excludePrompt) {
-        selected = opts[Math.floor(Math.random() * opts.length)];
-      }
-    }
-    return selected;
+    canvasRef.current.width = videoRef.current.videoWidth;
+    canvasRef.current.height = videoRef.current.videoHeight;
+    canvasRef.current.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+    setPendingAttachment({ data: canvasRef.current.toDataURL('image/jpeg', 0.8), file: null, type: 'image', name: `Kamera_${Date.now()}.jpg`, size: 'Live' });
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    setIsVideoOpen(false);
   };
 
   const toggleQuickMenu = () => {
     triggerHaptic();
     if (!isQuickActionsOpen) {
-      // Her açılışta taze, bir öncekiyle çakışmayan promptlar seç
-      setCurrentQuickActions(prevActions => [
-        { id: 'code', label: 'Kod Örnekleri', icon: Code, prompt: getRandomPrompt('code', prevActions.find(a => a.id === 'code')?.prompt) },
-        { id: 'image', label: 'Görsel Tasarım', icon: Palette, prompt: getRandomPrompt('image', prevActions.find(a => a.id === 'image')?.prompt) },
-        { id: 'lesson', label: 'Ders Notları', icon: BookOpen, prompt: getRandomPrompt('lesson', prevActions.find(a => a.id === 'lesson')?.prompt) },
-        { id: 'idea', label: 'Fikir Üretimi', icon: Lightbulb, prompt: getRandomPrompt('idea', prevActions.find(a => a.id === 'idea')?.prompt) },
-        { id: 'surprise', label: 'Şaşırt Beni', icon: Sparkles, prompt: getRandomPrompt('surprise', prevActions.find(a => a.id === 'surprise')?.prompt) },
+      const getPrompt = (cat: string) => QUICK_PROMPT_OPTIONS[cat as keyof typeof QUICK_PROMPT_OPTIONS][Math.floor(Math.random() * QUICK_PROMPT_OPTIONS[cat as keyof typeof QUICK_PROMPT_OPTIONS].length)];
+      setCurrentQuickActions([
+        { id: 'code', label: 'Kod', icon: Code, prompt: getPrompt('code') },
+        { id: 'image', label: 'Görsel', icon: Palette, prompt: getPrompt('image') },
+        { id: 'lesson', label: 'Ders', icon: BookOpen, prompt: getPrompt('lesson') },
+        { id: 'idea', label: 'Fikir', icon: Lightbulb, prompt: getPrompt('idea') },
+        { id: 'surprise', label: 'Şaşırt', icon: Sparkles, prompt: getPrompt('surprise') },
       ]);
     }
     setIsQuickActionsOpen(!isQuickActionsOpen);
   };
 
-  const handleSaveMessage = (text: string) => {
-    setSavedItems(prev => {
-      if (prev.some(item => item.text === text)) return prev;
-      return [{ id: Date.now().toString(), text, timestamp: Date.now() }, ...prev];
-    });
-    triggerHaptic();
-  };
-
-  const createNewSession = (initialMessages: Message[], title: string) => {
-    const newId = Date.now().toString();
-    const newSession: ChatSession = { id: newId, title, date: new Date().toISOString(), timestamp: Date.now(), messages: initialMessages };
-    if (!incognitoMode) {
-       setSessions(prev => [newSession, ...prev]);
-    }
-    setCurrentSessionId(newId);
-    return newId;
-  };
-
-  const handleSend = async (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent, overrideText?: string) => {
     e?.preventDefault();
     triggerHaptic();
-    const hasText = input.trim().length > 0;
+    
+    const textToSend = overrideText !== undefined ? overrideText : input;
+    const hasText = textToSend.trim().length > 0;
     const attachedData = pendingAttachment?.data;
     if ((!hasText && !attachedData) || isLoading || !hasApiKey) return;
 
-    const userText = input.trim();
+    const userText = textToSend.trim();
     const finalText = userText || (attachedData ? (pendingAttachment.type === 'video' ? "Videoyu analiz et." : "Resmi analiz et.") : "");
     
     setInput('');
     setPendingAttachment(null);
     if (textareaRef.current) textareaRef.current.style.height = '48px';
 
-    const newUserMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: finalText,
-      image: attachedData,
-      mediaType: pendingAttachment?.type,
-      timestamp: Date.now(),
-    };
-
+    const newUserMessage: Message = { id: Date.now().toString(), role: 'user', text: finalText, image: attachedData, mediaType: pendingAttachment?.type, timestamp: Date.now() };
     let activeMessages = currentSessionId ? [...messages, newUserMessage] : [newUserMessage]; 
     let activeSessionId = currentSessionId;
 
-    // Handle new session creation and title generation
     if (!activeSessionId) {
       setMessages(activeMessages);
       setIsLoading(true);
-      activeSessionId = createNewSession(activeMessages, "Yeni Sohbet...");
+      activeSessionId = Date.now().toString();
+      const newSession: ChatSession = { id: activeSessionId, title: "Yeni Sohbet...", date: new Date().toISOString(), timestamp: Date.now(), messages: activeMessages };
+      if (!incognitoMode) setSessions(prev => [newSession, ...prev]);
+      setCurrentSessionId(activeSessionId);
       
-      // Asynchronously generate a title based on the first message
-      generateChatTitle(finalText)
-        .then(title => {
-           if (!incognitoMode) {
-              setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, title } : s));
-           }
-        })
-        .catch(err => console.error("Title generation failed", err));
-        
+      if (autoTitle) {
+        generateChatTitle(finalText).then(title => {
+           if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, title } : s));
+        });
+      }
     } else {
       setMessages(activeMessages);
-      if (!incognitoMode) {
-         setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, messages: activeMessages } : s));
-      }
+      if (!incognitoMode) setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, messages: activeMessages } : s));
       setIsLoading(true);
     }
 
-    const startTime = Date.now();
-
     try {
+      const startTime = Date.now();
       let responseText = "";
       let generatedImage = undefined;
-      const lowerText = finalText.toLowerCase();
       
-      if (!attachedData && (lowerText.startsWith('resim çiz') || lowerText.includes('görsel oluştur'))) {
+      let modifiedPersona = persona;
+      if (responseStyle === 'concise') modifiedPersona += " Cevapların çok kısa, öz ve net olsun.";
+      if (responseStyle === 'verbose') modifiedPersona += " Cevapların çok detaylı, açıklayıcı ve kapsamlı olsun.";
+
+      if (!attachedData && (finalText.toLowerCase().startsWith('resim çiz'))) {
         generatedImage = await generateImageWithGemini(finalText);
-        responseText = `İşte görselin: ${finalText}`;
+        responseText = `Görsel oluşturuldu: ${finalText}`;
       } else {
-        let sliceCount = contextLimit === 'low' ? 5 : contextLimit === 'high' ? 30 : 15;
-        const historyForGemini = activeMessages.slice(0, -1)
-          .filter(msg => msg.id !== 'welcome')
-          .slice(-sliceCount)
-          .map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
-        
-        responseText = await sendMessageToGemini(
-          finalText, 
-          historyForGemini, 
-          attachedData, 
-          persona,
-          { 
-             temperature, 
-             maxOutputTokens, 
-             topP,
-             frequencyPenalty,
-             presencePenalty,
-             safetyLevel
-          }
-        );
+        responseText = await sendMessageToGemini(finalText, activeMessages.slice(0, -1).map(m => ({ role: m.role, parts: [{ text: m.text }] })), attachedData, modifiedPersona, { temperature, maxOutputTokens, topP, frequencyPenalty, presencePenalty, safetyLevel });
       }
 
-      const latency = Date.now() - startTime;
-      setLastLatency(latency);
-
-      const newModelMessage: Message = {
-        id: Date.now().toString(),
-        role: 'model',
-        text: responseText,
-        image: generatedImage,
-        mediaType: generatedImage ? 'image' : undefined,
-        timestamp: Date.now(),
-      };
-
+      setLastLatency(Date.now() - startTime);
+      const newModelMessage: Message = { id: Date.now().toString(), role: 'model', text: responseText, image: generatedImage, mediaType: generatedImage ? 'image' : undefined, timestamp: Date.now() };
       const finalMessages = [...activeMessages, newModelMessage];
       setMessages(finalMessages);
-      if (!incognitoMode) {
-         setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMessages } : s));
-      }
+      if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMessages } : s));
       
-      if (soundEnabled) console.log("Beep");
+      if (soundEnabled) {
+         // Placeholder sound logic
+      }
       if (autoRead) {
          const utterance = new SpeechSynthesisUtterance(responseText);
-         utterance.lang = 'tr-TR';
-         utterance.rate = voiceSpeed;
+         utterance.lang = 'tr-TR'; utterance.rate = voiceSpeed;
          window.speechSynthesis.speak(utterance);
       }
       sendDesktopNotification(responseText);
       triggerHaptic();
 
     } catch (error: any) {
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        role: 'model',
-        text: error.message || "Hata oluştu.",
-        timestamp: Date.now(),
-      };
-      setMessages([...activeMessages, errorMessage]);
+      setMessages([...activeMessages, { id: Date.now().toString(), role: 'model', text: error.message || "Hata.", timestamp: Date.now() }]);
+      showToast("Mesaj gönderilemedi", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!currentUser) return <LoginScreen onLogin={handleLogin} onGuestAccess={handleGuestAccess} accentColor={accentColor} />;
+  const handleRegenerate = () => {
+    if (messages.length === 0) return;
+    const lastMessage = messages[messages.length - 1];
+    const secondLastMessage = messages.length > 1 ? messages[messages.length - 2] : null;
 
-  // Dynamic Background Classes
-  const bgClass = backgroundStyle === 'gradient' 
-    ? 'bg-gradient-to-br from-gray-900 to-black' 
-    : backgroundStyle === 'particles' 
-      ? 'bg-[url("https://grainy-gradients.vercel.app/noise.svg")] bg-gray-950' 
-      : 'bg-black';
+    if (lastMessage.role === 'model' && secondLastMessage && secondLastMessage.role === 'user') {
+      const newMessages = messages.slice(0, -1);
+      setMessages(newMessages);
+      handleSend(undefined, secondLastMessage.text);
+    }
+  };
+
+  const handleEditMessage = (oldText: string) => {
+    const index = messages.findIndex(m => m.role === 'user' && m.text === oldText);
+    if (index !== -1) {
+      // Keep messages up to this point, excluding this user message and anything after
+      const newHistory = messages.slice(0, index);
+      setMessages(newHistory);
+      setInput(oldText);
+      textareaRef.current?.focus();
+    }
+  };
+
+  const handleStopGeneration = () => {
+    setIsLoading(false); // Logic simulated, as real stream abort needs AbortController ref
+    showToast("İşlem durduruldu", "info");
+  };
+
+  // Global Shortcuts Effect - Moved to end to capture handlers in closure
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!currentUser) return;
+
+      const isCmd = e.metaKey || e.ctrlKey;
+
+      // Open Settings: Ctrl + / or Ctrl + .
+      if (isCmd && (e.key === '/' || e.key === '.')) {
+        e.preventDefault();
+        setIsSettingsOpen(prev => !prev);
+      }
+
+      // Toggle Sidebar: Ctrl + B
+      if (isCmd && e.key === 'b') {
+        e.preventDefault();
+        setSidebarOpen(prev => !prev);
+      }
+
+      // New Chat: Ctrl + K
+      if (isCmd && e.key === 'k') {
+        e.preventDefault();
+        setCurrentSessionId(null);
+        setMessages([WELCOME_MESSAGE]);
+        textareaRef.current?.focus();
+      }
+
+      // Clear Chat: Ctrl + L
+      if (isCmd && e.key === 'l') {
+        e.preventDefault();
+        if (messages.length > 1) handleClearChat();
+      }
+
+      // Save/Export: Ctrl + S
+      if (isCmd && e.key === 's') {
+        e.preventDefault();
+        handleExportChat();
+      }
+
+      // Focus Mode: Ctrl + F
+      if (isCmd && e.key === 'f') {
+        e.preventDefault();
+        setIsFocusMode(prev => !prev);
+      }
+
+      // Mic Toggle: Ctrl + M
+      if (isCmd && e.key === 'm') {
+        e.preventDefault();
+        toggleListening();
+      }
+
+      // Regenerate: Ctrl + R
+      if (isCmd && e.key === 'r') {
+        e.preventDefault();
+        handleRegenerate();
+      }
+
+      // Jump to Bottom: Ctrl + J
+      if (isCmd && e.key === 'j') {
+        e.preventDefault();
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+
+      // Quick Menu: Ctrl + H
+      if (isCmd && e.key === 'h') {
+        e.preventDefault();
+        toggleQuickMenu();
+      }
+      
+      // Escape to close everything
+      if (e.key === 'Escape') {
+        if (isSettingsOpen) setIsSettingsOpen(false);
+        else if (isSidebarOpen) setSidebarOpen(false);
+        else if (isVideoOpen) setIsVideoOpen(false);
+        else if (isQuickActionsOpen) setIsQuickActionsOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentUser, isSettingsOpen, isSidebarOpen, isVideoOpen, isQuickActionsOpen, messages.length, handleExportChat, toggleListening, handleRegenerate, handleClearChat]);
+
+
+  // --- Render Logic ---
+
+  // 1. Check Privacy Policy First
+  if (!isPrivacyAccepted) {
+    return <PrivacyModal onAccept={handleAcceptPrivacy} />;
+  }
+
+  // 2. Check Authentication
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} onGuestAccess={handleGuestAccess} accentColor={accentColor} />;
+  }
+
+  const bgClass = backgroundStyle === 'gradient' ? 'bg-gradient-to-br from-gray-900 to-black' : backgroundStyle === 'particles' ? 'bg-[url("https://grainy-gradients.vercel.app/noise.svg")] bg-gray-950' : 'bg-black';
+  const fontWeightClass = fontWeight === 'light' ? 'font-light' : fontWeight === 'medium' ? 'font-medium' : fontWeight === 'bold' ? 'font-bold' : 'font-normal';
 
   return (
-    <div className={`flex h-screen ${bgClass} overflow-hidden selection:${theme.text} selection:bg-gray-800 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'} ${fontFamily} ${glassEffect ? 'backdrop-blur-sm' : ''}`}>
-      {/* Privacy Shield Blur */}
-      {isWindowBlurred && (
-        <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center text-center p-10 animate-fade-in">
-           <EyeOff size={64} className={`mb-4 ${theme.text}`} />
-           <h2 className="text-2xl font-bold text-white mb-2">Gizlilik Kalkanı Aktif</h2>
-           <p className="text-gray-400">Sohbet içeriği gizlendi. Devam etmek için ekrana tıklayın veya pencereye odaklanın.</p>
-        </div>
-      )}
+    <div className={`flex h-screen ${bgClass} overflow-hidden ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'} ${fontFamily} ${fontWeightClass} ${glassEffect && !highContrast ? 'backdrop-blur-sm' : ''} ${highContrast ? 'contrast-125 saturate-110' : ''}`}>
+      {isWindowBlurred && <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-10"><EyeOff size={64} className="text-white mb-4"/><h2 className="text-2xl text-white">Gizli</h2></div>}
 
-      <Sidebar 
-        isOpen={isSidebarOpen} 
-        onClose={() => setSidebarOpen(false)}
-        onNewChat={() => { setCurrentSessionId(null); setMessages([WELCOME_MESSAGE]); }}
-        onDeleteHistory={() => { if(confirm("Silinsin mi?")) { setSessions([]); localStorage.removeItem(getScopedKey(STORAGE_KEYS.SESSIONS, currentUser.email)); } }}
-        accentColor={accentColor}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-        sessions={sessions}
-        currentSessionId={currentSessionId}
-        onSelectSession={id => setCurrentSessionId(id)}
-      />
+      {/* Toast Notifications */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium text-white animate-slide-up-fade ${toast.type === 'error' ? 'bg-red-600' : toast.type === 'success' ? 'bg-green-600' : 'bg-gray-800 border border-gray-700'}`}>
+             {toast.type === 'error' ? <AlertCircle size={16}/> : toast.type === 'success' ? <Check size={16}/> : <Info size={16}/>}
+             {toast.message}
+          </div>
+        ))}
+      </div>
 
-      <div className="flex-1 flex flex-col h-full relative w-full">
-        <header className="flex items-center justify-between p-4 border-b border-gray-800 bg-gray-950/80 backdrop-blur-md z-10 absolute top-0 left-0 right-0 transition-all duration-300">
+      <div className={`${isFocusMode ? 'hidden' : 'block'} lg:block ${isFocusMode ? 'lg:hidden' : ''}`}>
+         <Sidebar 
+            isOpen={isSidebarOpen} 
+            onClose={() => setSidebarOpen(false)}
+            onNewChat={() => { setCurrentSessionId(null); setMessages([WELCOME_MESSAGE]); }}
+            onDeleteHistory={() => { if(confirm("Sil?")) { setSessions([]); localStorage.removeItem(getScopedKey(STORAGE_KEYS.SESSIONS, currentUser.email)); } }}
+            accentColor={accentColor} currentUser={currentUser} onLogout={handleLogout} sessions={sessions} currentSessionId={currentSessionId} onSelectSession={setCurrentSessionId}
+         />
+      </div>
+
+      <div className={`flex-1 flex flex-col h-full relative w-full transition-all ${sidebarMode === 'push' && isSidebarOpen ? 'lg:ml-0' : ''}`}>
+        <header className="flex items-center justify-between p-4 border-b border-gray-800 bg-gray-950/80 backdrop-blur-md z-10 absolute top-0 left-0 right-0">
           <div className={`flex items-center gap-3 ${sidebarPosition === 'right' ? 'flex-row-reverse' : ''}`}>
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-400 transition-transform active:scale-90"><Menu size={24} /></button>
-            <h1 className="text-lg font-semibold text-white flex items-center gap-2 select-none">
-              Td AI <span className={`text-xs px-1.5 rounded-full ${theme.iconBg} ${theme.text} border ${theme.border} border-opacity-30`}>v3.0</span>
-              {incognitoMode && <Lock size={14} className="text-purple-500" />}
-            </h1>
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-400"><Menu size={24} /></button>
+            <button onClick={() => setIsFocusMode(!isFocusMode)} className="hidden lg:block text-gray-400 hover:text-white p-1" title={isFocusMode ? "Odak Modundan Çık" : "Odak Modu"}>
+               {isFocusMode ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
+            </button>
+            <h1 className="text-lg font-semibold text-white flex items-center gap-2">Td AI <span className={`text-xs px-1.5 rounded-full ${theme.iconBg} ${theme.text}`}>v5.2</span></h1>
           </div>
           <div className="flex items-center gap-2">
-            {!hasApiKey && <div className="text-yellow-500 text-xs flex items-center gap-1 animate-pulse"><AlertTriangle size={12} /> API Yok</div>}
-            <button 
-               onClick={() => {
-                  navigator.clipboard.writeText(messages.map(m => `${m.role}: ${m.text}`).join('\n\n'));
-                  setIsHistoryCopied(true);
-                  setTimeout(() => setIsHistoryCopied(false), 2000);
-               }}
-               className={`p-2 text-gray-400 hover:${theme.text} hover:bg-gray-900/50 rounded-full transition-all duration-200 active:scale-90`}
-            >
-               {isHistoryCopied ? <Check size={20} className="text-green-500" /> : <Files size={20} />}
-            </button>
-            <button onClick={() => setIsSettingsOpen(true)} className={`p-2 text-gray-400 hover:${theme.text} hover:bg-gray-900/50 rounded-full transition-all duration-200 active:scale-90`}><Settings size={20} /></button>
+            {!hasApiKey && <div className="text-yellow-500 text-xs flex items-center gap-1"><AlertTriangle size={12} /> API Yok</div>}
+            <button onClick={handleClearChat} className="p-2 text-gray-400 hover:text-red-400 transition-all" title="Sohbeti Temizle"><Eraser size={20}/></button>
+            <button onClick={() => { navigator.clipboard.writeText(messages.map(m => `${m.role}: ${m.text}`).join('\n\n')); setIsHistoryCopied(true); setTimeout(() => setIsHistoryCopied(false), 2000); showToast("Geçmiş kopyalandı", "success"); }} className="p-2 text-gray-400 hover:text-white transition-all" title="Geçmişi Kopyala">{isHistoryCopied ? <Check size={20}/> : <Files size={20}/>}</button>
+            <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white transition-all" title="Ayarlar"><Settings size={20} /></button>
           </div>
         </header>
 
-        <main className={`flex-1 overflow-y-auto pt-20 pb-4 px-2 md:px-4 scroll-smooth custom-scrollbar`}>
-          <div className={`${chatWidth === 'full' ? 'max-w-full px-4' : 'max-w-3xl'} mx-auto space-y-6 min-h-[calc(100vh-180px)] transition-all duration-500 ease-smooth ${uiDensity === 'compact' ? 'space-y-3' : 'space-y-6'}`}>
-            {messages.map((msg, idx) => (
+        <main ref={mainContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pt-20 pb-4 px-2 md:px-4 scroll-smooth custom-scrollbar">
+          <div className={`${chatWidth === 'full' ? 'max-w-full px-4' : 'max-w-3xl'} mx-auto space-y-6 min-h-[calc(100vh-180px)] flex flex-col ${uiDensity === 'compact' ? 'space-y-3' : 'space-y-6'}`}>
+            
+            {/* Empty State Dashboard */}
+            {messages.length <= 1 && (
+               <div className="flex-1 flex flex-col justify-center items-center animate-fade-in pb-10">
+                  <div className="text-center mb-8">
+                     <div className={`w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-gray-800 to-black border border-gray-700 flex items-center justify-center shadow-2xl ${theme.text}`}>
+                        <Sparkles size={40} />
+                     </div>
+                     <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">Bugün ne yapalım?</h2>
+                     <p className="text-gray-400">Aşağıdaki önerilerden birini seç veya yazmaya başla.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
+                     {[
+                        { icon: Terminal, title: 'Kodlama', desc: 'React ile bir bileşen yaz', prompt: 'React ve Tailwind kullanarak modern bir kart bileşeni yaz.' },
+                        { icon: Palette, title: 'Tasarım', desc: 'Bir logo fikri ver', prompt: 'Teknoloji şirketi için minimalist logo fikirleri ver.' },
+                        { icon: BookOpen, title: 'Öğren', desc: 'Kuantum fiziğini anlat', prompt: 'Kuantum fiziğini 5 yaşında birine anlatır gibi özetle.' },
+                        { icon: Zap, title: 'Analiz', desc: 'Bu metni özetle', prompt: 'Şu metni maddeler halinde özetle: ' }
+                     ].map((card, idx) => (
+                        <button key={idx} onClick={() => setInput(card.prompt)} className="flex items-center gap-4 p-4 rounded-xl bg-gray-900/50 border border-gray-800 hover:border-gray-600 hover:bg-gray-900 transition-all text-left group">
+                           <div className={`p-3 rounded-lg bg-gray-800 group-hover:scale-110 transition-transform ${theme.text}`}><card.icon size={20}/></div>
+                           <div><div className="font-bold text-white text-sm">{card.title}</div><div className="text-xs text-gray-500">{card.desc}</div></div>
+                        </button>
+                     ))}
+                  </div>
+               </div>
+            )}
+
+            {messages.length > 0 && messages.map((msg, idx) => (
               <div key={msg.id} className={messageAlignment === 'classic' && msg.role === 'model' ? 'mr-auto w-full' : ''}>
                 <MessageItem 
-                  message={msg} 
-                  accentColor={accentColor} 
-                  onSave={handleSaveMessage}
-                  fontSize={fontSize}
-                  typingEffect={typingEffect}
-                  showAvatars={showAvatars}
-                  timeFormat={timeFormat}
-                  customUsername={username}
-                  userAvatar={userAvatar}
-                  borderRadius={borderRadius}
-                  showLineNumbers={showLineNumbers}
-                  latency={msg.role === 'model' && idx === messages.length - 1 && showLatency ? lastLatency : undefined}
+                  message={msg} accentColor={accentColor} onSave={t => { setSavedItems(p => [{ id: Date.now().toString(), text: t, timestamp: Date.now() }, ...p]); showToast("Mesaj kaydedildi", "success"); }}
+                  fontSize={fontSize} typingEffect={typingEffect} showAvatars={showAvatars} timeFormat={timeFormat} customUsername={username} userAvatar={userAvatar}
+                  borderRadius={borderRadius} showLineNumbers={showLineNumbers} latency={msg.role === 'model' && idx === messages.length - 1 && showLatency ? lastLatency : undefined}
+                  showTimestamp={showTimestamp}
+                  isLast={idx === messages.length - 1}
+                  onRegenerate={msg.role === 'model' ? handleRegenerate : undefined}
+                  onEdit={msg.role === 'user' ? handleEditMessage : undefined}
                 />
               </div>
             ))}
-            {isLoading && (
-               <div className="flex items-center gap-3 pl-4 py-2 animate-fade-in">
-                  <div className={`w-2 h-2 ${theme.primary} rounded-full animate-pulse-slow`}></div>
-                  <div className={`w-2 h-2 ${theme.primary} rounded-full animate-pulse-slow delay-100`}></div>
-                  <div className={`w-2 h-2 ${theme.primary} rounded-full animate-pulse-slow delay-200`}></div>
-               </div>
-            )}
+            {isLoading && <div className="flex gap-2 pl-4"><div className={`w-2 h-2 ${theme.primary} rounded-full animate-bounce`}></div><div className={`w-2 h-2 ${theme.primary} rounded-full animate-bounce delay-75`}></div><div className={`w-2 h-2 ${theme.primary} rounded-full animate-bounce delay-150`}></div></div>}
             <div ref={messagesEndRef} className="h-4" />
           </div>
         </main>
 
-        <div className="p-4 bg-black/80 backdrop-blur-md border-t border-gray-800/50 transition-all duration-300">
-          <div className={`${chatWidth === 'full' ? 'max-w-5xl' : 'max-w-3xl'} mx-auto relative`}>
-            
-            {/* Stats Footer if enabled */}
-            {showTokenCount && (
-              <div className="absolute -top-6 right-0 text-[10px] text-gray-600 font-mono bg-gray-900 px-2 py-0.5 rounded">
-                 Tahmini: {messages.reduce((acc, m) => acc + m.text.length / 4, 0).toFixed(0)} token
-              </div>
-            )}
+        {/* Floating Scroll Button */}
+        <button 
+           onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
+           className={`fixed bottom-28 right-6 p-3 rounded-full shadow-xl z-40 bg-gray-800 text-white border border-gray-700 hover:bg-gray-700 transition-all duration-300 ${showScrollButton ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+        >
+           <ArrowDown size={20} />
+        </button>
 
+        <div className="p-4 bg-black/80 backdrop-blur-md border-t border-gray-800/50">
+          <div className={`${chatWidth === 'full' ? 'max-w-5xl' : 'max-w-3xl'} mx-auto relative`}>
+            {showTokenCount && <div className="absolute -top-6 right-0 text-[10px] text-gray-600 bg-gray-900 px-2 rounded">~{messages.reduce((acc, m) => acc + m.text.length / 4, 0).toFixed(0)} tokens</div>}
             {isQuickActionsOpen && (
-              <div ref={quickMenuRef} className="absolute bottom-full left-0 mb-3 w-72 bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl shadow-2xl overflow-hidden origin-bottom-left animate-scale-in z-20 flex flex-col max-h-80">
+              <div ref={quickMenuRef} className="absolute bottom-full left-0 mb-3 w-72 bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-80 animate-scale-in z-20">
                 <div className="flex border-b border-gray-800">
-                  <button onClick={() => setActiveQuickTab('suggestions')} className={`flex-1 py-2 text-xs font-bold transition-colors ${activeQuickTab === 'suggestions' ? theme.text : 'text-gray-500 hover:text-gray-300'}`}>ÖNERİLER</button>
-                  <button onClick={() => setActiveQuickTab('saved')} className={`flex-1 py-2 text-xs font-bold transition-colors ${activeQuickTab === 'saved' ? theme.text : 'text-gray-500 hover:text-gray-300'}`}>KAYDEDİLENLER</button>
+                  <button onClick={() => setActiveQuickTab('suggestions')} className={`flex-1 py-2 text-xs font-bold ${activeQuickTab === 'suggestions' ? theme.text : 'text-gray-500'}`}>ÖNERİLER</button>
+                  <button onClick={() => setActiveQuickTab('saved')} className={`flex-1 py-2 text-xs font-bold ${activeQuickTab === 'saved' ? theme.text : 'text-gray-500'}`}>KAYITLAR</button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-1 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-1">
                    {activeQuickTab === 'suggestions' 
-                      ? currentQuickActions.map(a => <button key={a.id} onClick={() => { setInput(a.prompt); setIsQuickActionsOpen(false); }} className="flex gap-2 p-2.5 w-full hover:bg-gray-800 rounded-lg text-left text-sm text-gray-300 transition-colors items-center"><a.icon size={14} className={theme.text} />{a.label}</button>)
-                      : savedItems.map(s => <button key={s.id} onClick={() => { setInput(s.text); setIsQuickActionsOpen(false); }} className="p-2.5 w-full hover:bg-gray-800 rounded-lg text-left text-sm text-gray-300 truncate border-b border-gray-800/50 last:border-0 transition-colors">{s.text}</button>)
+                      ? currentQuickActions.map(a => <button key={a.id} onClick={() => { setInput(a.prompt); setIsQuickActionsOpen(false); }} className="flex gap-2 p-2.5 w-full hover:bg-gray-800 rounded text-left text-sm text-gray-300 items-center"><a.icon size={14} className={theme.text} />{a.label}</button>)
+                      : savedItems.map(s => <button key={s.id} onClick={() => { setInput(s.text); setIsQuickActionsOpen(false); }} className="p-2.5 w-full hover:bg-gray-800 rounded text-left text-sm text-gray-300 truncate">{s.text}</button>)
                    }
                 </div>
               </div>
             )}
 
             {pendingAttachment && (
-               <div className="absolute bottom-full left-0 mb-2 bg-gray-900/90 backdrop-blur border border-gray-700 p-2 rounded-lg flex items-center gap-2 animate-slide-up-fade">
-                  <span className="text-xs text-white truncate max-w-[200px]">{pendingAttachment.name}</span>
-                  <button onClick={() => setPendingAttachment(null)} className="hover:text-red-500 transition-colors"><X size={14} className="text-gray-400" /></button>
-               </div>
+              <div className="absolute bottom-full left-0 right-0 mb-4 mx-4 bg-gray-900 p-3 rounded-2xl flex items-center gap-4 shadow-2xl border border-gray-700 animate-slide-up-fade">
+                <div className="h-12 w-12 bg-black rounded overflow-hidden">{pendingAttachment.type === 'video' ? <video src={pendingAttachment.data} className="h-full w-full object-cover"/> : <img src={pendingAttachment.data} className="h-full w-full object-cover"/>}</div>
+                <div className="flex-1"><h4 className="text-sm font-bold text-white truncate">{pendingAttachment.name}</h4><span className="text-xs text-gray-500">{pendingAttachment.size}</span></div>
+                <button onClick={() => setPendingAttachment(null)} className="p-2 hover:text-red-400"><X size={18}/></button>
+              </div>
             )}
 
-            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl shadow-inner transition-all duration-200 focus-within:ring-1 focus-within:bg-gray-900 ${theme.ring}`}>
+            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl ${theme.ring}`}>
               <div className="flex items-center pb-1 gap-1">
-                <button type="button" onClick={toggleQuickMenu} className={`p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90 ${isQuickActionsOpen ? theme.text : ''}`}><MoreVertical size={20} /></button>
+                <button type="button" onClick={toggleQuickMenu} className={`p-2 text-gray-400 hover:text-white transition-all ${isQuickActionsOpen ? theme.text : ''}`}><MoreVertical size={20}/></button>
                 <div className="w-px h-5 bg-gray-700 mx-1"></div>
-                <input type="file" ref={fileInputRef} onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} className="hidden" />
-                <button type="button" onClick={() => fileInputRef.current?.click()} className={`p-2 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90 ${pendingAttachment ? theme.text : 'text-gray-400'}`}><Paperclip size={20} /></button>
-                <button type="button" onClick={startVideo} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90"><Camera size={20} /></button>
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-transform active:scale-90"><Upload size={20} /></button>
+                <input type="file" ref={fileInputRef} onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} className="hidden" accept={SUPPORTED_MIME_TYPES.join(',')} />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className={`p-2 hover:text-white transition-all ${pendingAttachment ? theme.text : 'text-gray-400'}`}><Paperclip size={20}/></button>
+                <button type="button" onClick={startVideo} className="p-2 text-gray-400 hover:text-white transition-all"><Camera size={20}/></button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-white transition-all"><Upload size={20}/></button>
               </div>
-              <textarea
-                ref={textareaRef}
-                value={input}
-                spellCheck={spellcheck}
-                onChange={handleInputChange}
-                onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
-                placeholder={pendingAttachment ? "Medya hakkında..." : `Mesaj yaz ${username}...`}
-                className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none transition-all ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`}
-                rows={1}
-              />
+              <textarea ref={textareaRef} value={input} spellCheck={spellcheck} onChange={handleInputChange} onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}} placeholder={pendingAttachment ? "Medya..." : `Mesaj yaz ${username}...`} className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`} rows={1} />
+              <div className="absolute bottom-2 right-14 text-[10px] text-gray-600 font-mono pointer-events-none bg-gray-900/80 px-1 rounded">{input.length}</div>
               <div className="flex items-center pb-1 gap-1">
-                 <button type="button" onClick={toggleListening} className={`p-2 rounded-full transition-all active:scale-90 ${isListening ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>{isListening ? <StopCircle size={20} /> : <Mic size={20} />}</button>
-                 <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all transform active:scale-90 ${ (input.trim() || pendingAttachment) && !isLoading ? `${theme.primary} text-white shadow-lg` : 'bg-gray-800 text-gray-500' }`}><Send size={20} /></button>
+                 <button type="button" onClick={toggleListening} className={`p-2 rounded-full ${isListening ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}>{isListening ? <StopCircle size={20}/> : <Mic size={20}/>}</button>
+                 {isLoading ? (
+                    <button type="button" onClick={handleStopGeneration} className="p-2 rounded-full bg-red-900/50 text-red-500 hover:bg-red-900 animate-pulse"><StopCircle size={20}/></button>
+                 ) : (
+                    <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all ${ (input.trim() || pendingAttachment) && !isLoading ? `${theme.primary} text-white` : 'bg-gray-800 text-gray-500' }`}><Send size={20}/></button>
+                 )}
               </div>
             </form>
-            
-            <div className="mt-2 text-center"><p className="text-[10px] text-gray-600 transition-opacity hover:opacity-80">Td AI hata yapabilir. Önemli bilgileri kontrol et.</p></div>
           </div>
         </div>
       </div>
 
-      {isVideoOpen && (
-         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
-            <button onClick={() => { setIsVideoOpen(false); streamRef.current?.getTracks().forEach(t => t.stop()); }} className="absolute top-4 right-4 text-white bg-gray-800/80 backdrop-blur p-2 rounded-full z-20 transition-transform active:scale-90"><X size={24}/></button>
-            <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover" />
-            <canvas ref={canvasRef} className="hidden" />
-            <div className="absolute bottom-10 left-0 right-0 flex justify-center"><button onClick={captureToAttachment} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 shadow-2xl transition-transform active:scale-90"></button></div>
-         </div>
-      )}
+      {isVideoOpen && <div className="fixed inset-0 z-50 bg-black flex flex-col"><button onClick={() => { setIsVideoOpen(false); streamRef.current?.getTracks().forEach(t => t.stop()); }} className="absolute top-4 right-4 text-white bg-gray-800 p-2 rounded-full z-20"><X size={24}/></button><video ref={videoRef} autoPlay playsInline className="flex-1 object-cover"/><canvas ref={canvasRef} className="hidden"/><div className="absolute bottom-10 left-0 right-0 flex justify-center"><button onClick={captureToAttachment} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300"></button></div></div>}
 
       <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)}
+        isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)}
         currentPersona={persona} onSavePersona={setPersona}
         currentColor={accentColor} onSaveColor={setAccentColor}
         fontSize={fontSize} onSaveFontSize={setFontSize}
@@ -902,9 +945,7 @@ const App: React.FC = () => {
         incognitoMode={incognitoMode} onSaveIncognitoMode={setIncognitoMode}
         soundEnabled={soundEnabled} onSaveSoundEnabled={setSoundEnabled}
         showLatency={showLatency} onSaveShowLatency={setShowLatency}
-        onResetData={handleResetData}
-        onExportChat={handleExportChat}
-        // Mega New Props
+        onResetData={handleResetData} onExportChat={handleExportChat}
         uiDensity={uiDensity} onSaveUiDensity={setUiDensity}
         messageAlignment={messageAlignment} onSaveMessageAlignment={setMessageAlignment}
         backgroundStyle={backgroundStyle} onSaveBackgroundStyle={setBackgroundStyle}
@@ -916,6 +957,19 @@ const App: React.FC = () => {
         debugMode={debugMode} onSaveDebugMode={setDebugMode}
         startPage={startPage} onSaveStartPage={setStartPage}
         spellcheck={spellcheck} onSaveSpellcheck={setSpellcheck}
+        streamResponse={streamResponse} onSaveStreamResponse={setStreamResponse}
+        showTimestamp={showTimestamp} onSaveShowTimestamp={setShowTimestamp}
+        highContrast={highContrast} onSaveHighContrast={setHighContrast}
+        exportFormat={exportFormat} onSaveExportFormat={setExportFormat}
+        
+        // Passing New Laboratory Props
+        sidebarMode={sidebarMode} onSaveSidebarMode={setSidebarMode}
+        fontWeight={fontWeight} onSaveFontWeight={setFontWeight}
+        notificationSound={notificationSound} onSaveNotificationSound={setNotificationSound}
+        responseStyle={responseStyle} onSaveResponseStyle={setResponseStyle}
+        autoTitle={autoTitle} onSaveAutoTitle={setAutoTitle}
+        renderLatex={renderLatex} onSaveRenderLatex={setRenderLatex}
+        autoDelete={autoDelete} onSaveAutoDelete={setAutoDelete}
       />
     </div>
   );

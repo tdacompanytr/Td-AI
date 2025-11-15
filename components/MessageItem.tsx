@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Volume2, Languages, Copy, Check, StopCircle, ThumbsUp, ThumbsDown, Terminal, Bookmark, ExternalLink, Activity } from 'lucide-react';
+import { Volume2, Languages, Copy, Check, StopCircle, ThumbsUp, ThumbsDown, Terminal, Bookmark, ExternalLink, Activity, RotateCcw, Edit2 } from 'lucide-react';
 import { Message } from '../types';
 import { THEMES } from '../utils/theme';
 import { sendFeedback } from '../services/geminiService';
@@ -21,6 +21,10 @@ interface MessageItemProps {
   latency?: number;
   borderRadius?: 'small' | 'medium' | 'large' | 'full';
   showLineNumbers?: boolean;
+  showTimestamp?: boolean;
+  isLast?: boolean;
+  onRegenerate?: () => void;
+  onEdit?: (text: string) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({ 
@@ -36,7 +40,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   userAvatar,
   latency,
   borderRadius = 'large',
-  showLineNumbers = true
+  showLineNumbers = true,
+  showTimestamp = true,
+  isLast = false,
+  onRegenerate,
+  onEdit
 }) => {
   const isUser = message.role === 'user';
   const theme = THEMES[accentColor] || THEMES.red;
@@ -171,105 +179,53 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
     if (!inline && match) {
       return (
-        <div className={`my-4 ${radiusClass} overflow-hidden border ${theme.border} border-opacity-30 bg-[#1e1e1e] shadow-2xl group/code relative w-full transition-all hover:border-opacity-50`}>
-          <div className={`flex items-center justify-between px-4 py-2.5 bg-gray-900/90 border-b ${theme.border} border-opacity-20 select-none backdrop-blur-sm`}>
+        <div className={`my-4 ${radiusClass} overflow-hidden border ${theme.border} border-opacity-40 bg-[#0d0d0d] shadow-2xl group/code relative w-full transition-all hover:border-opacity-60`}>
+          <div className={`flex items-center justify-between px-4 py-2 bg-white/5 border-b ${theme.border} border-opacity-10 select-none backdrop-blur-md`}>
             <div className="flex items-center gap-3">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]/50"></div>
-                <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]/50"></div>
-                <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]/50"></div>
+              <div className="flex gap-1.5 opacity-75">
+                <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] border border-[#e0443e]/50"></div>
+                <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] border border-[#dea123]/50"></div>
+                <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f] border border-[#1aab29]/50"></div>
               </div>
-              <span className={`ml-2 text-xs font-mono font-bold uppercase tracking-wider ${theme.iconBg} ${theme.text} px-2 py-0.5 rounded flex items-center gap-1.5 border ${theme.border} border-opacity-30`}>
+              <span className={`ml-2 text-[10px] font-mono font-bold uppercase tracking-wider ${theme.text} opacity-90 flex items-center gap-1.5`}>
                 <Terminal size={10} />
                 {language}
               </span>
             </div>
-            <button
-              onClick={handleCodeCopy}
-              className={`flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:${theme.text} transition-all bg-gray-800/50 hover:bg-gray-700 px-2.5 py-1.5 rounded-md border border-transparent hover:${theme.border} hover:border-opacity-30 active:scale-95`}
-            >
-              {isCodeCopied ? (
-                <>
-                  <Check size={12} className="text-green-500" />
-                  <span className="text-green-500">Kopyalandı</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={12} />
-                  <span>Kopyala</span>
-                </>
-              )}
+            <button onClick={handleCodeCopy} className={`flex items-center gap-1.5 text-[10px] font-medium text-gray-400 hover:${theme.text} transition-all bg-white/5 hover:bg-white/10 px-2 py-1 rounded border border-transparent hover:${theme.border} hover:border-opacity-30 active:scale-95`}>
+              {isCodeCopied ? <><Check size={12} className="text-green-500" /><span className="text-green-500">Kopyalandı</span></> : <><Copy size={12} /><span>Kopyala</span></>}
             </button>
           </div>
           <div className="text-xs md:text-sm overflow-x-auto relative custom-scrollbar">
-            <SyntaxHighlighter
-              style={vscDarkPlus}
-              language={language}
-              PreTag="div"
-              showLineNumbers={showLineNumbers}
-              wrapLines={true}
-              lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', color: '#6e7681', textAlign: 'right', borderRight: '1px solid #333', marginRight: '1em', display: window.innerWidth < 600 ? 'none' : 'block' }}
-              customStyle={{ margin: 0, padding: '1.25rem', background: 'transparent', fontSize: 'inherit', lineHeight: '1.6' }}
-              {...props}
-            >
+            <SyntaxHighlighter style={vscDarkPlus} language={language} PreTag="div" showLineNumbers={showLineNumbers} wrapLines={true}
+              lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', color: '#4b5563', textAlign: 'right', borderRight: '1px solid #333', marginRight: '1em', display: window.innerWidth < 600 ? 'none' : 'block' }}
+              customStyle={{ margin: 0, padding: '1.25rem', background: 'transparent', fontSize: 'inherit', lineHeight: '1.6' }} {...props}>
               {codeContent}
             </SyntaxHighlighter>
           </div>
         </div>
       );
     }
-
-    return (
-      <code className={`${inline ? `bg-gray-800/80 px-1.5 py-0.5 rounded text-[0.9em] font-mono ${theme.textHighlight} border border-gray-700/50 whitespace-pre-wrap break-all` : `block bg-gray-900 p-4 ${radiusClass} overflow-x-auto font-mono text-xs md:text-sm my-3 border border-gray-800`}`} {...props}>
-        {children}
-      </code>
-    );
+    return <code className={`${inline ? `bg-gray-800/50 px-1.5 py-0.5 rounded text-[0.9em] font-mono ${theme.textHighlight} border border-gray-700/50 whitespace-pre-wrap break-all` : `block bg-gray-900 p-4 ${radiusClass} overflow-x-auto font-mono text-xs md:text-sm my-3 border border-gray-800`}`} {...props}>{children}</code>;
   };
 
   return (
-    <div 
-      className={`flex items-start gap-2 md:gap-3 flex-row ${isUser ? 'justify-end' : ''} animate-slide-up-fade group/message opacity-0`}
-      style={{ animationDuration }}
-    >
-      {/* Avatar - Hidden if showAvatars is false */}
+    <div className={`flex items-start gap-2 md:gap-3 flex-row ${isUser ? 'justify-end' : ''} animate-slide-up-fade group/message opacity-0`} style={{ animationDuration }}>
       {!isUser && showAvatars && (
         <div className={`flex-shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center overflow-hidden ${theme.bubbleAi} border ${theme.bubbleAiBorder} shadow-lg mt-1 transition-transform hover:scale-105`}>
-           <svg className="w-4 h-4 md:w-5 md:h-5 text-white" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 8V4H8"></path>
-            <rect width="16" height="12" x="4" y="8" rx="2"></rect>
-            <path d="M2 14h2"></path>
-            <path d="M20 14h2"></path>
-            <path d="M15 13v2"></path>
-            <path d="M9 13v2"></path>
-          </svg>
+           <svg className="w-4 h-4 md:w-5 md:h-5 text-white" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg>
         </div>
       )}
 
       <div className={`relative flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[90%] md:max-w-[85%] lg:max-w-[75%]`}>
-        
-        {/* Sender Name (Optional/Hover) */}
         <div className={`text-[10px] text-gray-500 mb-1 px-1 font-medium tracking-wide transition-opacity ${isUser ? 'text-right' : 'text-left'} ${showAvatars ? 'block' : 'hidden group-hover/message:block'}`}>
           {isUser ? customUsername : 'Td AI'}
         </div>
 
-        <div 
-          className={`px-4 py-3 md:px-5 md:py-4 ${radiusClass} ${textSizeClass} overflow-hidden shadow-md transition-all duration-300 hover:shadow-lg ${
-            isUser 
-              ? `${theme.bubbleUser} text-white rounded-br-none border ${theme.border} border-opacity-50` 
-              : `${theme.bubbleAi} text-white rounded-bl-none border ${theme.bubbleAiBorder} ${theme.bubbleAiShadow}`
-          }`}
-        >
-          {/* Media Display */}
+        <div className={`px-4 py-3 md:px-5 md:py-4 ${radiusClass} ${textSizeClass} overflow-hidden shadow-md transition-all duration-300 hover:shadow-lg ${isUser ? `${theme.bubbleUser} text-white rounded-br-none border ${theme.userBubbleBorder || theme.border} border-opacity-50` : `${theme.bubbleAi} text-white rounded-bl-none border ${theme.bubbleAiBorder} ${theme.bubbleAiShadow}`}`}>
           {message.image && (
             <div className={`mb-3 md:mb-4 -mx-4 -mt-3 md:-mx-5 md:-mt-4 overflow-hidden relative group/media ${radiusClass} rounded-b-none`}>
-              {message.mediaType === 'video' ? (
-                <video src={message.image} controls className="w-full h-auto max-h-80 object-contain bg-black/40" />
-              ) : (
-                <>
-                   <div className="absolute inset-0 bg-black/0 group-hover/media:bg-black/10 transition-colors"></div>
-                   <img src={message.image} alt="Görsel" className="w-full h-auto max-h-80 object-contain bg-black/20" />
-                </>
-              )}
+              {message.mediaType === 'video' ? <video src={message.image} controls className="w-full h-auto max-h-80 object-contain bg-black/40" /> : <><div className="absolute inset-0 bg-black/0 group-hover/media:bg-black/10 transition-colors"></div><img src={message.image} alt="Görsel" className="w-full h-auto max-h-80 object-contain bg-black/20" /></>}
             </div>
           )}
 
@@ -277,86 +233,46 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             <ReactMarkdown
               components={{
                 code: CodeBlock,
-                a: ({ node, ...props }) => (
-                  <a target="_blank" rel="noopener noreferrer" className={`font-semibold underline decoration-2 underline-offset-2 ${theme.text} hover:opacity-80 transition-opacity break-all inline-flex items-center gap-0.5`} {...props}>
-                    {props.children} <ExternalLink size={10} className="inline" />
-                  </a>
-                ),
+                a: ({ node, ...props }) => <a target="_blank" rel="noopener noreferrer" className={`font-semibold underline decoration-2 underline-offset-2 ${theme.text} hover:opacity-80 transition-opacity break-all inline-flex items-center gap-0.5`} {...props}>{props.children} <ExternalLink size={10} className="inline" /></a>,
                 p: ({ node, ...props }) => <p className="mb-3 last:mb-0 break-words leading-7" {...props} />,
                 strong: ({ node, ...props }) => <strong className="font-bold text-white bg-white/5 px-1 rounded-sm" {...props} />,
-                em: ({ node, ...props }) => <em className="italic text-gray-300" {...props} />,
                 ul: ({ node, ...props }) => <ul className="list-disc pl-5 md:pl-6 my-3 space-y-1.5 marker:text-gray-500" {...props} />,
                 ol: ({ node, ...props }) => <ol className="list-decimal pl-5 md:pl-6 my-3 space-y-1.5 marker:text-gray-500" {...props} />,
-                li: ({ node, ...props }) => <li className="pl-1" {...props} />,
-                h1: ({ node, ...props }) => <h1 className={`text-2xl md:text-3xl font-bold mt-6 mb-4 pb-2 border-b ${theme.border} border-opacity-30 text-white`} {...props} />,
-                h2: ({ node, ...props }) => <h2 className="text-xl md:text-2xl font-bold mt-5 mb-3 text-gray-100" {...props} />,
-                h3: ({ node, ...props }) => <h3 className="text-lg md:text-xl font-semibold mt-4 mb-2 text-gray-200" {...props} />,
-                h4: ({ node, ...props }) => <h4 className="text-base md:text-lg font-semibold mt-3 mb-2 text-gray-300" {...props} />,
-                blockquote: ({ node, ...props }) => (
-                  <blockquote className={`border-l-4 ${theme.border} pl-4 my-4 italic text-gray-400 bg-gray-900/40 py-3 rounded-r-lg text-[0.95em] leading-relaxed shadow-sm`} {...props} />
-                ),
-                table: ({ node, ...props }) => (
-                  <div className={`w-full overflow-x-auto my-4 ${radiusClass} border ${theme.border} border-opacity-20 shadow-sm bg-gray-900/30`}>
-                    <table className="min-w-full divide-y divide-gray-800 text-left text-xs md:text-sm border-collapse" {...props} />
-                  </div>
-                ),
+                table: ({ node, ...props }) => <div className={`w-full overflow-x-auto my-4 ${radiusClass} border ${theme.border} border-opacity-20 shadow-sm bg-gray-900/30`}><table className="min-w-full divide-y divide-gray-800 text-left text-xs md:text-sm border-collapse" {...props} /></div>,
                 thead: ({ node, ...props }) => <thead className="bg-gray-900/80" {...props} />,
                 tbody: ({ node, ...props }) => <tbody className="divide-y divide-gray-800/50" {...props} />,
                 tr: ({ node, ...props }) => <tr className="hover:bg-white/5 transition-colors even:bg-white/[0.02]" {...props} />,
                 th: ({ node, ...props }) => <th className={`px-4 py-3 font-semibold ${theme.textHighlight} uppercase text-xs tracking-wider`}>{props.children}</th>,
                 td: ({ node, ...props }) => <td className="px-4 py-3 whitespace-pre-wrap border-t border-gray-800/30" {...props} />,
-                hr: ({ node, ...props }) => <hr className="my-6 border-gray-700/50 border-2 rounded-full w-1/3 mx-auto opacity-50" {...props} />,
-                img: ({ node, ...props }) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className={`${radiusClass} shadow-lg max-w-full h-auto my-4 border ${theme.border} border-opacity-20 mx-auto`} {...props} alt={props.alt || 'Görsel'} />
-                ),
+                img: ({ node, ...props }) => <img className={`${radiusClass} shadow-lg max-w-full h-auto my-4 border ${theme.border} border-opacity-20 mx-auto`} {...props} alt={props.alt || 'Görsel'} />,
               }}
             >
               {displayedText}
             </ReactMarkdown>
-            {!isTypingComplete && !isUser && typingEffect && (
-              <span className={`inline-block w-2 h-4 md:h-5 align-middle ml-1 ${theme.primary} animate-pulse rounded-sm shadow-[0_0_10px_currentColor]`}></span>
-            )}
+            {!isTypingComplete && !isUser && typingEffect && <span className={`inline-block w-2 h-4 md:h-5 align-middle ml-1 ${theme.primary} animate-pulse rounded-sm shadow-[0_0_10px_currentColor]`}></span>}
           </div>
           
           <div className="flex justify-between items-end mt-2 pt-2 border-t border-white/5">
-            {/* Latency Indicator (If enabled and exists) */}
-            {latency && !isUser && (
-              <span className="text-[9px] text-gray-500 font-mono opacity-60 animate-fade-in flex items-center gap-1">
-                 <Activity size={10} /> {latency}ms
-              </span>
-            )}
-            <span className={`text-[9px] md:text-[10px] opacity-50 select-none font-medium tracking-wide ml-auto`}>
-              {formattedTime}
-            </span>
+            {latency && !isUser && <span className="text-[9px] text-gray-500 font-mono opacity-60 animate-fade-in flex items-center gap-1"><Activity size={10} /> {latency}ms</span>}
+            {showTimestamp && <span className={`text-[9px] md:text-[10px] opacity-50 select-none font-medium tracking-wide ml-auto`}>{formattedTime}</span>}
           </div>
         </div>
 
-        {/* User Actions */}
         {isUser && (
           <div className={`mt-1 mr-1 flex items-center gap-1 transition-all duration-300 ${copied || saved ? 'opacity-100' : 'opacity-0 group-hover/message:opacity-100'}`}>
-            <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Kopyala">
-              {copied ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Copy size={14} />}
-            </button>
-            <button onClick={handleSave} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Kaydet">
-              {saved ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Bookmark size={14} />}
-            </button>
+            <button onClick={() => onEdit && onEdit(message.text)} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Düzenle"><Edit2 size={14} /></button>
+            <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title={copied ? "Kopyalandı" : "Kopyala"}>{copied ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Copy size={14} />}</button>
+            <button onClick={handleSave} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title={saved ? "Kaydedildi" : "Kaydet"}>{saved ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Bookmark size={14} />}</button>
           </div>
         )}
 
-        {/* Action Buttons (AI) */}
         {!isUser && (
           <div className={`mt-1.5 md:mt-2 ml-1 flex items-center gap-1 transition-all duration-300 ${isTypingComplete ? 'opacity-0 group-hover/message:opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-            <button onClick={handleSpeak} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title={isSpeaking ? "Durdur" : "Seslendir"}>
-              {isSpeaking ? <StopCircle size={14} className="text-red-500 animate-pulse" /> : <Volume2 size={14} />}
-            </button>
-            <button onClick={handleTranslate} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Google Translate'de Aç"><Languages size={14} /></button>
-            <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Tümünü Kopyala">
-                {copied ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Copy size={14} />}
-            </button>
-            <button onClick={handleSave} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Kaydedilenlere Ekle">
-                {saved ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Bookmark size={14} />}
-            </button>
+            {isLast && onRegenerate && <button onClick={onRegenerate} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Yeniden Oluştur"><RotateCcw size={14} /></button>}
+            <button onClick={handleSpeak} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title={isSpeaking ? "Durdur" : "Seslendir"}>{isSpeaking ? <StopCircle size={14} className="text-red-500 animate-pulse" /> : <Volume2 size={14} />}</button>
+            <button onClick={handleTranslate} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Google Translate"><Languages size={14} /></button>
+            <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title="Kopyala">{copied ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Copy size={14} />}</button>
+            <button onClick={handleSave} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-all active:scale-90" title={saved ? "Kaydedildi" : "Kaydet"}>{saved ? <Check size={14} className="text-green-500 animate-scale-in" /> : <Bookmark size={14} />}</button>
             <div className="w-px h-3 md:h-4 bg-gray-800 mx-1"></div>
             <button onClick={() => handleFeedbackAction('like')} className={`p-1.5 rounded-lg hover:bg-gray-800 transition-all active:scale-90 ${message.feedback === 'like' ? 'text-green-500 bg-green-500/10' : 'text-gray-400 hover:text-green-500'}`}><ThumbsUp size={14} className={message.feedback === 'like' ? 'fill-current' : ''} /></button>
             <button onClick={() => handleFeedbackAction('dislike')} className={`p-1.5 rounded-lg hover:bg-gray-800 transition-all active:scale-90 ${message.feedback === 'dislike' ? 'text-red-500 bg-red-500/10' : 'text-gray-400 hover:text-red-500'}`}><ThumbsDown size={14} className={message.feedback === 'dislike' ? 'fill-current' : ''} /></button>
@@ -364,18 +280,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         )}
       </div>
 
-      {/* User Avatar - Hidden if showAvatars is false */}
       {isUser && showAvatars && (
         <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-full bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-700 shadow-sm mt-1 transition-transform hover:scale-105">
-          {userAvatar ? (
-             // eslint-disable-next-line @next/next/no-img-element
-             <img src={userAvatar} alt="User Avatar" className="w-full h-full object-cover" />
-          ) : (
-            <svg className="w-4 h-4 md:w-5 md:h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-          )}
+          {userAvatar ? <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" /> : <svg className="w-4 h-4 md:w-5 md:h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>}
         </div>
       )}
     </div>

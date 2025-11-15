@@ -184,10 +184,9 @@ export const generateChatTitle = async (firstMessage: string): Promise<string> =
   if (!ai) return "Yeni Sohbet";
 
   try {
-    // Optimize edilmiş prompt: Kısa, öz ve emoji içeren başlıklar ister
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Aşağıdaki mesajı analiz et ve bu sohbet için çok kısa (2-4 kelime), içeriği özetleyen Türkçe bir başlık yaz. Mümkünse başa uygun bir emoji ekle. Sadece başlığı döndür, tırnak işareti kullanma.\n\nMesaj: ${firstMessage.substring(0, 300)}`,
+      contents: `Bu mesajı analiz et ve sohbet geçmişi için çok kısa (2-5 kelime), öz ve açıklayıcı Türkçe bir başlık oluştur. Uygunsa başına tek bir emoji ekle. Tırnak işareti veya "Başlık:" gibi ekler kullanma. \n\nMesaj: "${firstMessage.substring(0, 300)}..."`,
     });
     
     return response.text?.trim() || "Yeni Sohbet";
