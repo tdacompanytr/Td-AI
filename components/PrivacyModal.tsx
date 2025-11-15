@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Shield, Lock, Check, FileText, Server, Database, Eye, AlertCircle } from 'lucide-react';
+import { Shield, Lock, Check, FileText, Server, Database, Eye, AlertCircle, Cookie } from 'lucide-react';
 
 interface PrivacyModalProps {
   onAccept: () => void;
@@ -17,8 +16,8 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ onAccept }) => {
             <Shield size={32} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Gizlilik Politikası ve Kullanım Şartları</h1>
-            <p className="text-sm text-gray-400">Uygulamayı kullanmaya başlamadan önce lütfen okuyun.</p>
+            <h1 className="text-xl md:text-2xl font-bold text-white">Gizlilik Politikası ve Çerez Kullanımı</h1>
+            <p className="text-sm text-gray-400">Uygulamayı kullanmaya başlamadan önce lütfen onaylayın.</p>
           </div>
         </div>
 
@@ -52,6 +51,15 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ onAccept }) => {
             </p>
           </section>
 
+          <section>
+            <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <Cookie size={20} className="text-red-500"/> 4. Çerez (Cookie) ve İzleme Politikası
+            </h3>
+            <p className="text-sm">
+              Bu uygulama, deneyiminizi kişiselleştirmek (tema rengi, yazı tipi boyutu, ses ayarları vb.) ve oturum sürekliliğini sağlamak amacıyla tarayıcı çerezlerini ve yerel depolama teknolojilerini kullanır. Hizmeti kullanarak, bu teknolojilerin cihazınızda veri saklamasına izin vermiş olursunuz.
+            </p>
+          </section>
+
           <section className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 flex gap-3 items-start">
             <AlertCircle size={24} className="text-red-500 shrink-0 mt-0.5" />
             <div className="text-xs text-gray-400">
@@ -65,14 +73,14 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ onAccept }) => {
         {/* Footer */}
         <div className="p-6 border-t border-gray-800 bg-gray-900/50 shrink-0 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-gray-500 text-center md:text-left">
-                Devam ederek yukarıdaki şartları kabul etmiş sayılırsınız.
+                Devam ederek Gizlilik Politikası ve Çerez Kullanımını kabul etmiş sayılırsınız.
             </p>
             <button 
                 onClick={onAccept}
-                className="w-full md:w-auto px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-900/20 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                className="w-full md:w-auto px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-900/20 transition-all transform active:scale-95 flex items-center justify-center gap-2 text-sm"
             >
-                <Check size={20} />
-                Okudum, Kabul Ediyorum
+                <Check size={18} />
+                Gizlilik ve Çerezleri Kabul Et
             </button>
         </div>
 

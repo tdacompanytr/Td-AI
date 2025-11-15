@@ -1,11 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2 } from 'lucide-react';
+import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2, Image as ImageIcon, Phone } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { MessageItem } from './components/MessageItem';
 import { SettingsModal } from './components/SettingsModal';
 import { LoginScreen } from './components/LoginScreen';
 import { PrivacyModal } from './components/PrivacyModal';
+import { LiveCallOverlay } from './components/LiveCallOverlay';
 import { sendMessageToGemini, generateImageWithGemini, generateChatTitle } from './services/geminiService';
 import { Message, ChatSession } from './types';
 import { THEMES } from './utils/theme';
@@ -196,6 +197,8 @@ const App: React.FC = () => {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isLiveCallActive, setIsLiveCallActive] = useState(false);
   const [activeQuickTab, setActiveQuickTab] = useState<'suggestions' | 'saved'>('suggestions');
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const [currentQuickActions, setCurrentQuickActions] = useState<QuickActionItem[]>([]);
@@ -601,6 +604,20 @@ const App: React.FC = () => {
     setPendingAttachment(null);
     if (textareaRef.current) textareaRef.current.style.height = '48px';
 
+    // Determine if we are in image generation mode
+    let isImageGeneration = isImageMode;
+    let promptForAI = finalText;
+
+    // Fallback to legacy text command if mode is off
+    if (!isImageGeneration && !attachedData && finalText.toLowerCase().startsWith('resim çiz')) {
+      isImageGeneration = true;
+      // Strip the command for cleaner prompt if possible, but keep it simple for now or just pass full
+      // Ideally: promptForAI = finalText.replace(/^resim çiz\s*/i, '');
+    }
+
+    // If explicit image mode and no prompt text, maybe warn? But we checked hasText
+    if (isImageGeneration && promptForAI.trim() === '') promptForAI = finalText; 
+
     const newUserMessage: Message = { id: Date.now().toString(), role: 'user', text: finalText, image: attachedData, mediaType: pendingAttachment?.type, timestamp: Date.now() };
     let activeMessages = currentSessionId ? [...messages, newUserMessage] : [newUserMessage]; 
     let activeSessionId = currentSessionId;
@@ -633,9 +650,14 @@ const App: React.FC = () => {
       if (responseStyle === 'concise') modifiedPersona += " Cevapların çok kısa, öz ve net olsun.";
       if (responseStyle === 'verbose') modifiedPersona += " Cevapların çok detaylı, açıklayıcı ve kapsamlı olsun.";
 
-      if (!attachedData && (finalText.toLowerCase().startsWith('resim çiz'))) {
-        generatedImage = await generateImageWithGemini(finalText);
-        responseText = `Görsel oluşturuldu: ${finalText}`;
+      if (!attachedData && isImageGeneration) {
+        // Remove the trigger prefix if it exists to give the model a cleaner prompt
+        // Update regex to include potential colon
+        const cleanPrompt = promptForAI.replace(/^resim çiz[:\s]*/i, '');
+        const finalImagePrompt = cleanPrompt || promptForAI;
+
+        generatedImage = await generateImageWithGemini(finalImagePrompt);
+        responseText = `Görsel oluşturuldu: ${finalImagePrompt}`;
       } else {
         responseText = await sendMessageToGemini(finalText, activeMessages.slice(0, -1).map(m => ({ role: m.role, parts: [{ text: m.text }] })), attachedData, modifiedPersona, { temperature, maxOutputTokens, topP, frequencyPenalty, presencePenalty, safetyLevel });
       }
@@ -662,6 +684,7 @@ const App: React.FC = () => {
       showToast("Mesaj gönderilemedi", "error");
     } finally {
       setIsLoading(false);
+      if (isImageMode) setIsImageMode(false); // Turn off image mode after sending
     }
   };
 
@@ -795,6 +818,15 @@ const App: React.FC = () => {
     <div className={`flex h-screen ${bgClass} overflow-hidden ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'} ${fontFamily} ${fontWeightClass} ${glassEffect && !highContrast ? 'backdrop-blur-sm' : ''} ${highContrast ? 'contrast-125 saturate-110' : ''}`}>
       {isWindowBlurred && <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-10"><EyeOff size={64} className="text-white mb-4"/><h2 className="text-2xl text-white">Gizli</h2></div>}
 
+      {/* Live Call Overlay */}
+      {isLiveCallActive && (
+        <LiveCallOverlay 
+          onClose={() => setIsLiveCallActive(false)} 
+          apiKey={process.env.API_KEY || ''} 
+          persona={persona}
+        />
+      )}
+
       {/* Toast Notifications */}
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none">
         {toasts.map(toast => (
@@ -826,6 +858,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             {!hasApiKey && <div className="text-yellow-500 text-xs flex items-center gap-1"><AlertTriangle size={12} /> API Yok</div>}
+            <button onClick={() => setIsLiveCallActive(true)} className={`p-2 ${theme.text} hover:bg-gray-900 rounded-full transition-all`} title="Görüntülü Arama"><Phone size={20}/></button>
             <button onClick={handleShareChat} className="p-2 text-gray-400 hover:text-blue-400 transition-all" title="Paylaş"><Share2 size={20}/></button>
             <button onClick={handleClearChat} className="p-2 text-gray-400 hover:text-red-400 transition-all" title="Sohbeti Temizle"><Eraser size={20}/></button>
             <button onClick={() => { navigator.clipboard.writeText(messages.map(m => `${m.role}: ${m.text}`).join('\n\n')); setIsHistoryCopied(true); setTimeout(() => setIsHistoryCopied(false), 2000); showToast("Geçmiş kopyalandı", "success"); }} className="p-2 text-gray-400 hover:text-white transition-all" title="Geçmişi Kopyala">{isHistoryCopied ? <Check size={20}/> : <Files size={20}/>}</button>
@@ -849,7 +882,7 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
                      {[
                         { icon: Terminal, title: 'Kodlama', desc: 'React ile bir bileşen yaz', prompt: 'React ve Tailwind kullanarak modern bir kart bileşeni yaz.' },
-                        { icon: Palette, title: 'Tasarım', desc: 'Bir logo fikri ver', prompt: 'Teknoloji şirketi için minimalist logo fikirleri ver.' },
+                        { icon: Palette, title: 'Tasarım', desc: 'Bir logo fikri ver', prompt: 'Resim çiz: Teknoloji şirketi için minimalist bir logo.' },
                         { icon: BookOpen, title: 'Öğren', desc: 'Kuantum fiziğini anlat', prompt: 'Kuantum fiziğini 5 yaşında birine anlatır gibi özetle.' },
                         { icon: Zap, title: 'Analiz', desc: 'Bu metni özetle', prompt: 'Şu metni maddeler halinde özetle: ' }
                      ].map((card, idx) => (
@@ -914,31 +947,31 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl ${theme.ring}`}>
+            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl transition-all duration-300 ${theme.ring} ${isImageMode ? 'ring-2 ring-purple-500/50 bg-purple-950/10 border-purple-500/30' : ''}`}>
               <div className="flex items-center pb-1 gap-1">
                 <button type="button" onClick={toggleQuickMenu} className={`p-2 text-gray-400 hover:text-white transition-all ${isQuickActionsOpen ? theme.text : ''}`}><MoreVertical size={20}/></button>
                 <div className="w-px h-5 bg-gray-700 mx-1"></div>
                 <input type="file" ref={fileInputRef} onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} className="hidden" accept={SUPPORTED_MIME_TYPES.join(',')} />
+                
+                <button type="button" onClick={() => { setIsImageMode(!isImageMode); if(!isImageMode) showToast("Görsel Modu Açık", "info"); else showToast("Görsel Modu Kapalı", "info"); }} className={`p-2 transition-all ${isImageMode ? 'text-purple-400 bg-purple-400/10 rounded-lg' : 'text-gray-400 hover:text-white'}`} title="Görsel Oluşturma Modu"><ImageIcon size={20}/></button>
+
                 <button type="button" onClick={() => fileInputRef.current?.click()} className={`p-2 hover:text-white transition-all ${pendingAttachment ? theme.text : 'text-gray-400'}`}><Paperclip size={20}/></button>
                 <button type="button" onClick={startVideo} className="p-2 text-gray-400 hover:text-white transition-all"><Camera size={20}/></button>
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-white transition-all"><Upload size={20}/></button>
               </div>
-              <textarea ref={textareaRef} value={input} spellCheck={spellcheck} onChange={handleInputChange} onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}} placeholder={pendingAttachment ? "Medya..." : `Mesaj yaz ${username}...`} className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`} rows={1} />
+              <textarea ref={textareaRef} value={input} spellCheck={spellcheck} onChange={handleInputChange} onKeyDown={e => { if(e.key === 'Enter' && enterToSend && !e.shiftKey) { e.preventDefault(); handleSend(); }}} placeholder={pendingAttachment ? "Medya..." : isImageMode ? "Görseli tarif et..." : `Mesaj yaz ${username}...`} className={`flex-1 bg-transparent text-white placeholder-gray-500 p-2.5 min-h-[48px] max-h-[160px] resize-none focus:outline-none ${fontSize === 'large' ? 'text-lg' : fontSize === 'xl' ? 'text-xl' : 'text-sm'}`} rows={1} />
               <div className="absolute bottom-2 right-14 text-[10px] text-gray-600 font-mono pointer-events-none bg-gray-900/80 px-1 rounded">{input.length}</div>
               <div className="flex items-center pb-1 gap-1">
                  <button type="button" onClick={toggleListening} className={`p-2 rounded-full ${isListening ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}>{isListening ? <StopCircle size={20}/> : <Mic size={20}/>}</button>
                  {isLoading ? (
                     <button type="button" onClick={handleStopGeneration} className="p-2 rounded-full bg-red-900/50 text-red-500 hover:bg-red-900 animate-pulse"><StopCircle size={20}/></button>
                  ) : (
-                    <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all ${ (input.trim() || pendingAttachment) && !isLoading ? `${theme.primary} text-white` : 'bg-gray-800 text-gray-500' }`}><Send size={20}/></button>
+                    <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all ${ (input.trim() || pendingAttachment) && !isLoading ? `${isImageMode ? 'bg-purple-600 hover:bg-purple-500' : theme.primary} text-white` : 'bg-gray-800 text-gray-500' }`}><Send size={20}/></button>
                  )}
               </div>
             </form>
           </div>
         </div>
       </div>
-
-      {isVideoOpen && <div className="fixed inset-0 z-50 bg-black flex flex-col"><button onClick={() => { setIsVideoOpen(false); streamRef.current?.getTracks().forEach(t => t.stop()); }} className="absolute top-4 right-4 text-white bg-gray-800 p-2 rounded-full z-20"><X size={24}/></button><video ref={videoRef} autoPlay playsInline className="flex-1 object-cover"/><canvas ref={canvasRef} className="hidden"/><div className="absolute bottom-10 left-0 right-0 flex justify-center"><button onClick={captureToAttachment} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300"></button></div></div>}
 
       <SettingsModal 
         isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)}

@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Type, Keyboard, Zap, Monitor, Sliders, Volume2, Trash2, Info, ShieldAlert, Layout, Maximize, Minimize, Cpu, ArrowDownCircle, UserCircle, Bell, Clock, Activity, Download, Settings, DownloadCloud, Lock, Eye, EyeOff, Hash, MousePointerClick, Globe, Sparkles, Fingerprint, Circle, Mic2, Speaker, Music, Layers, Palette, Box, Shield, Terminal, Command, Camera, FileText, Moon, Sun, Beaker, Sidebar, MessageSquare, Scale, LifeBuoy, Mail, Copy, Code } from 'lucide-react';
+import { X, Check, Type, Keyboard, Zap, Monitor, Sliders, Volume2, Trash2, Info, ShieldAlert, Layout, Maximize, Minimize, Cpu, ArrowDownCircle, UserCircle, Bell, Clock, Activity, Download, Settings, DownloadCloud, Lock, Eye, EyeOff, Hash, MousePointerClick, Globe, Sparkles, Fingerprint, Circle, Mic2, Speaker, Music, Layers, Palette, Box, Shield, Terminal, Command, Camera, FileText, Moon, Sun, Beaker, Sidebar, MessageSquare, Scale, LifeBuoy, Mail, Copy, Code, Image as ImageIcon } from 'lucide-react';
 import { THEMES } from '../utils/theme';
 
 interface SettingsModalProps {
@@ -157,18 +156,16 @@ const fontOptions = [
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
-  isOpen, onClose, currentPersona, onSavePersona, currentColor, onSaveColor, fontSize, onSaveFontSize, fontFamily = 'font-sans', onSaveFontFamily = () => {},
+  isOpen, onClose, currentPersona, onSavePersona, currentColor, onSaveColor, fontSize, onSaveFontSize, 
+  fontFamily = 'font-sans', onSaveFontFamily,
   showAvatars, onSaveShowAvatars, timeFormat, onSaveTimeFormat, borderRadius, onSaveBorderRadius, animationSpeed, onSaveAnimationSpeed, showLineNumbers, onSaveShowLineNumbers,
   chatWidth, onSaveChatWidth, sidebarPosition, onSaveSidebarPosition, enterToSend, onSaveEnterToSend, typingEffect, onSaveTypingEffect, autoScroll, onSaveAutoScroll,
   notifications, onSaveNotifications, hapticFeedback, onSaveHapticFeedback, temperature, onSaveTemperature, contextLimit, onSaveContextLimit, maxOutputTokens, onSaveMaxOutputTokens,
   topP, onSaveTopP, frequencyPenalty, onSaveFrequencyPenalty, presencePenalty, onSavePresencePenalty, safetyLevel, onSaveSafetyLevel, username, onSaveUsername, userAvatar, onSaveUserAvatar,
   incognitoMode, onSaveIncognitoMode, soundEnabled, onSaveSoundEnabled, showLatency, onSaveShowLatency, onResetData, onExportChat,
-  // Mega New Props
   uiDensity, onSaveUiDensity, messageAlignment, onSaveMessageAlignment, backgroundStyle, onSaveBackgroundStyle, glassEffect, onSaveGlassEffect, blurOnLeave, onSaveBlurOnLeave,
   voiceSpeed, onSaveVoiceSpeed, autoRead, onSaveAutoRead, showTokenCount, onSaveShowTokenCount, debugMode, onSaveDebugMode, startPage, onSaveStartPage, spellcheck, onSaveSpellcheck,
-  // Ultra New Props
   streamResponse, onSaveStreamResponse, showTimestamp, onSaveShowTimestamp, highContrast, onSaveHighContrast, exportFormat, onSaveExportFormat,
-  // Laboratory Props
   sidebarMode, onSaveSidebarMode, fontWeight, onSaveFontWeight, notificationSound, onSaveNotificationSound, responseStyle, onSaveResponseStyle, autoTitle, onSaveAutoTitle, renderLatex, onSaveRenderLatex, autoDelete, onSaveAutoDelete
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'intelligence' | 'appearance' | 'sound' | 'system' | 'advanced' | 'laboratory' | 'shortcuts' | 'support' | 'about'>('general');
@@ -193,7 +190,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !onSaveUserAvatar) return;
-    if (file.size > 1024 * 1024) return alert("Max 1MB");
+    if (file.size > 1024 * 1024) {
+      window.alert("Max 1MB");
+      return;
+    }
     const reader = new FileReader();
     reader.onloadend = () => onSaveUserAvatar(reader.result as string);
     reader.readAsDataURL(file);
@@ -268,7 +268,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className={`p-2 rounded-xl ${theme.iconBg} ${theme.text}`}><Settings size={20} /></div>
             <div><h2 className="text-lg font-bold text-white leading-none">Kontrol Merkezi Ultimate</h2><p className="text-xs text-gray-500 mt-1">Sistem Geneli Yapılandırma Paneli</p></div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-2 hover:bg-gray-900 rounded-full transition-colors"><X size={24} /></button>
+          <button onClick={() => onClose()} className="text-gray-400 hover:text-white p-2 hover:bg-gray-900 rounded-full transition-colors"><X size={24} /></button>
         </div>
 
         <div className="flex border-b border-gray-800 shrink-0 bg-gray-950 overflow-x-auto custom-scrollbar">
@@ -452,7 +452,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <ShieldAlert size={32} className="text-red-500 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-white mb-6">Tehlikeli Bölge</h3>
                   <div className="flex justify-center gap-4">
-                      <button onClick={onExportChat} className="px-6 py-3 rounded-xl bg-gray-900 border border-gray-700 flex gap-2 items-center"><Download size={18} /> Yedekle</button>
+                      <button onClick={() => onExportChat()} className="px-6 py-3 rounded-xl bg-gray-900 border border-gray-700 flex gap-2 items-center"><Download size={18} /> Yedekle</button>
                       <button onClick={() => { if (window.confirm("Sil?")) { onResetData(); onClose(); } }} className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-xl flex gap-2 items-center font-bold text-white"><Trash2 size={18} /> Sıfırla</button>
                   </div>
                </div>
@@ -545,7 +545,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                      </div>
                      <div>
                         <div className="text-sm text-gray-500 mb-1">Yetenekler</div>
-                        <div className="text-sm font-medium text-gray-300">Metin, Kod, Görsel Analiz, Çok Dilli</div>
+                        <div className="text-sm font-medium text-gray-300 leading-relaxed">
+                            Gelişmiş Metin Üretimi, Kod Yazma ve Hata Ayıklama, Matematiksel Problem Çözme, Yüksek Kaliteli Resim Çizme (Imagen 3), Görsel Analiz (Multimodal), Sesli ve Görüntülü Etkileşim, Belge ve Veri Analizi.
+                        </div>
                      </div>
                   </div>
                </div>
@@ -579,7 +581,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
         </div>
-        <div className="bg-gray-950 border-t border-gray-800 p-4 flex justify-end gap-3 shrink-0 z-20"><button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-gray-900">İptal</button><button onClick={handleSaveAll} className={`px-8 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg ${theme.primary} ${theme.primaryHover}`}>Kaydet</button></div>
+        <div className="bg-gray-950 border-t border-gray-800 p-4 flex justify-end gap-3 shrink-0 z-20"><button onClick={() => onClose()} className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-gray-900">İptal</button><button onClick={handleSaveAll} className={`px-8 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg ${theme.primary} ${theme.primaryHover}`}>Kaydet</button></div>
       </div>
     </div>
   );
