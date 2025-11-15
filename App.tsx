@@ -1,13 +1,12 @@
-
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2, Image as ImageIcon, Phone } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Send, Mic, Video, Paperclip, Menu, AlertTriangle, X, Camera, StopCircle, Settings, Trash2, MoreVertical, Code, Palette, BookOpen, Lightbulb, Sparkles, Bookmark, Upload, Files, Check, Lock, EyeOff, ArrowDown, Eraser, Maximize2, Minimize2, Terminal, Zap, Activity, MessageSquare, AlertCircle, Info, Share2, Image as ImageIcon, Phone, Ratio, Square, Smartphone, Monitor } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { MessageItem } from './components/MessageItem';
 import { SettingsModal } from './components/SettingsModal';
 import { LoginScreen } from './components/LoginScreen';
 import { PrivacyModal } from './components/PrivacyModal';
 import { LiveCallOverlay } from './components/LiveCallOverlay';
-import { sendMessageToGemini, generateImageWithGemini, generateChatTitle } from './services/geminiService';
+import { sendMessageToGemini, generateImageWithGemini, generateChatTitle, sendMessageToGeminiStream } from './services/geminiService';
 import { Message, ChatSession } from './types';
 import { THEMES } from './utils/theme';
 
@@ -198,6 +197,7 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [isImageMode, setIsImageMode] = useState(false);
+  const [imageAspectRatio, setImageAspectRatio] = useState<'1:1' | '16:9' | '9:16' | '4:3' | '3:4'>('1:1');
   const [isLiveCallActive, setIsLiveCallActive] = useState(false);
   const [activeQuickTab, setActiveQuickTab] = useState<'suggestions' | 'saved'>('suggestions');
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
@@ -611,11 +611,8 @@ const App: React.FC = () => {
     // Fallback to legacy text command if mode is off
     if (!isImageGeneration && !attachedData && finalText.toLowerCase().startsWith('resim çiz')) {
       isImageGeneration = true;
-      // Strip the command for cleaner prompt if possible, but keep it simple for now or just pass full
-      // Ideally: promptForAI = finalText.replace(/^resim çiz\s*/i, '');
     }
 
-    // If explicit image mode and no prompt text, maybe warn? But we checked hasText
     if (isImageGeneration && promptForAI.trim() === '') promptForAI = finalText; 
 
     const newUserMessage: Message = { id: Date.now().toString(), role: 'user', text: finalText, image: attachedData, mediaType: pendingAttachment?.type, timestamp: Date.now() };
@@ -651,32 +648,68 @@ const App: React.FC = () => {
       if (responseStyle === 'verbose') modifiedPersona += " Cevapların çok detaylı, açıklayıcı ve kapsamlı olsun.";
 
       if (!attachedData && isImageGeneration) {
-        // Remove the trigger prefix if it exists to give the model a cleaner prompt
-        // Update regex to include potential colon
         const cleanPrompt = promptForAI.replace(/^resim çiz[:\s]*/i, '');
         const finalImagePrompt = cleanPrompt || promptForAI;
 
-        generatedImage = await generateImageWithGemini(finalImagePrompt);
+        generatedImage = await generateImageWithGemini(finalImagePrompt, imageAspectRatio);
         responseText = `Görsel oluşturuldu: ${finalImagePrompt}`;
+        
+        // Non-streaming for image
+        setLastLatency(Date.now() - startTime);
+        const newModelMessage: Message = { id: Date.now().toString(), role: 'model', text: responseText, image: generatedImage, mediaType: generatedImage ? 'image' : undefined, timestamp: Date.now() };
+        const finalMessages = [...activeMessages, newModelMessage];
+        setMessages(finalMessages);
+        if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMessages } : s));
+        
       } else {
-        responseText = await sendMessageToGemini(finalText, activeMessages.slice(0, -1).map(m => ({ role: m.role, parts: [{ text: m.text }] })), attachedData, modifiedPersona, { temperature, maxOutputTokens, topP, frequencyPenalty, presencePenalty, safetyLevel });
+        // STREAMING LOGIC
+        if (streamResponse) {
+            const streamMsgId = Date.now().toString();
+            const initialModelMessage: Message = { 
+                id: streamMsgId, 
+                role: 'model', 
+                text: '', // Start empty
+                timestamp: Date.now() 
+            };
+            
+            const msgsWithPlaceholder = [...activeMessages, initialModelMessage];
+            setMessages(msgsWithPlaceholder);
+            if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: msgsWithPlaceholder } : s));
+
+            // Use streaming function
+            responseText = await sendMessageToGeminiStream(
+              finalText,
+              activeMessages.slice(0, -1).map(m => ({ role: m.role, parts: [{ text: m.text }] })),
+              (currentText) => {
+                  // Incremental update
+                  setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, text: currentText } : m));
+              },
+              attachedData,
+              modifiedPersona,
+              { temperature, maxOutputTokens, topP, frequencyPenalty, presencePenalty, safetyLevel }
+            );
+            
+            // Final state update to ensure consistency
+            const finalMsgs = msgsWithPlaceholder.map(m => m.id === streamMsgId ? { ...m, text: responseText } : m);
+            if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMsgs } : s));
+        } else {
+            // Standard Call
+            responseText = await sendMessageToGemini(finalText, activeMessages.slice(0, -1).map(m => ({ role: m.role, parts: [{ text: m.text }] })), attachedData, modifiedPersona, { temperature, maxOutputTokens, topP, frequencyPenalty, presencePenalty, safetyLevel });
+            
+            setLastLatency(Date.now() - startTime);
+            const newModelMessage: Message = { id: Date.now().toString(), role: 'model', text: responseText, image: generatedImage, mediaType: generatedImage ? 'image' : undefined, timestamp: Date.now() };
+            const finalMessages = [...activeMessages, newModelMessage];
+            setMessages(finalMessages);
+            if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMessages } : s));
+        }
       }
 
-      setLastLatency(Date.now() - startTime);
-      const newModelMessage: Message = { id: Date.now().toString(), role: 'model', text: responseText, image: generatedImage, mediaType: generatedImage ? 'image' : undefined, timestamp: Date.now() };
-      const finalMessages = [...activeMessages, newModelMessage];
-      setMessages(finalMessages);
-      if (!incognitoMode) setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: finalMessages } : s));
-      
-      if (soundEnabled) {
-         // Placeholder sound logic
-      }
-      if (autoRead) {
+      if (autoRead && !isImageGeneration) {
          const utterance = new SpeechSynthesisUtterance(responseText);
          utterance.lang = 'tr-TR'; utterance.rate = voiceSpeed;
          window.speechSynthesis.speak(utterance);
       }
-      sendDesktopNotification(responseText);
+      if (!streamResponse) sendDesktopNotification(responseText); // For stream, we might not want to notify
       triggerHaptic();
 
     } catch (error: any) {
@@ -684,7 +717,7 @@ const App: React.FC = () => {
       showToast("Mesaj gönderilemedi", "error");
     } finally {
       setIsLoading(false);
-      if (isImageMode) setIsImageMode(false); // Turn off image mode after sending
+      if (isImageMode) setIsImageMode(false); 
     }
   };
 
@@ -798,8 +831,41 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentUser, isSettingsOpen, isSidebarOpen, isVideoOpen, isQuickActionsOpen, messages.length, handleExportChat, toggleListening, handleRegenerate, handleClearChat]);
 
-
   // --- Render Logic ---
+
+  // Group consecutive messages
+  const displayMessages = useMemo(() => {
+    if (messages.length === 0) return [];
+    
+    const grouped: Message[] = [];
+    let currentMsg: Message | null = null;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      
+      if (!currentMsg) {
+        currentMsg = { ...msg };
+        continue;
+      }
+
+      const isSameRole = msg.role === currentMsg.role;
+      const hasMedia = currentMsg.image || msg.image || currentMsg.mediaType || msg.mediaType;
+      
+      if (isSameRole && !hasMedia) {
+        currentMsg = {
+          ...currentMsg,
+          text: `${currentMsg.text}\n\n${msg.text}`,
+          timestamp: msg.timestamp
+        };
+      } else {
+        grouped.push(currentMsg);
+        currentMsg = { ...msg };
+      }
+    }
+    if (currentMsg) grouped.push(currentMsg);
+    
+    return grouped;
+  }, [messages]);
 
   // 1. Check Privacy Policy First
   if (!isPrivacyAccepted) {
@@ -895,14 +961,14 @@ const App: React.FC = () => {
                </div>
             )}
 
-            {messages.length > 0 && messages.map((msg, idx) => (
+            {displayMessages.length > 0 && displayMessages.map((msg, idx) => (
               <div key={msg.id} className={messageAlignment === 'classic' && msg.role === 'model' ? 'mr-auto w-full' : ''}>
                 <MessageItem 
                   message={msg} accentColor={accentColor} onSave={t => { setSavedItems(p => [{ id: Date.now().toString(), text: t, timestamp: Date.now() }, ...p]); showToast("Mesaj kaydedildi", "success"); }}
                   fontSize={fontSize} typingEffect={typingEffect} showAvatars={showAvatars} timeFormat={timeFormat} customUsername={username} userAvatar={userAvatar}
-                  borderRadius={borderRadius} showLineNumbers={showLineNumbers} latency={msg.role === 'model' && idx === messages.length - 1 && showLatency ? lastLatency : undefined}
+                  borderRadius={borderRadius} showLineNumbers={showLineNumbers} latency={msg.role === 'model' && idx === displayMessages.length - 1 && showLatency ? lastLatency : undefined}
                   showTimestamp={showTimestamp}
-                  isLast={idx === messages.length - 1}
+                  isLast={idx === displayMessages.length - 1}
                   onRegenerate={msg.role === 'model' ? handleRegenerate : undefined}
                   onEdit={msg.role === 'user' ? handleEditMessage : undefined}
                 />
@@ -924,6 +990,27 @@ const App: React.FC = () => {
         <div className="p-4 bg-black/80 backdrop-blur-md border-t border-gray-800/50">
           <div className={`${chatWidth === 'full' ? 'max-w-5xl' : 'max-w-3xl'} mx-auto relative`}>
             {showTokenCount && <div className="absolute -top-6 right-0 text-[10px] text-gray-600 bg-gray-900 px-2 rounded">~{messages.reduce((acc, m) => acc + m.text.length / 4, 0).toFixed(0)} tokens</div>}
+            
+            {isImageMode && (
+              <div className="absolute bottom-full left-0 mb-3 ml-1 flex gap-2 animate-slide-up-fade">
+                <div className="flex bg-gray-900/90 border border-gray-700 rounded-lg p-1 shadow-lg backdrop-blur-sm">
+                  {['1:1', '16:9', '9:16', '4:3', '3:4'].map(ratio => (
+                      <button 
+                        key={ratio} 
+                        onClick={() => setImageAspectRatio(ratio as any)} 
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${imageAspectRatio === ratio ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                      >
+                        {ratio}
+                      </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1 bg-purple-900/20 border border-purple-500/30 rounded-lg px-2 text-[10px] font-bold text-purple-300 backdrop-blur-sm">
+                  <ImageIcon size={12} />
+                  GÖRSEL MODU
+                </div>
+              </div>
+            )}
+
             {isQuickActionsOpen && (
               <div ref={quickMenuRef} className="absolute bottom-full left-0 mb-3 w-72 bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-80 animate-scale-in z-20">
                 <div className="flex border-b border-gray-800">
@@ -947,13 +1034,13 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl transition-all duration-300 ${theme.ring} ${isImageMode ? 'ring-2 ring-purple-500/50 bg-purple-950/10 border-purple-500/30' : ''}`}>
+            <form onSubmit={handleSend} className={`relative flex items-end gap-2 bg-gray-900/50 border border-gray-700 p-2 rounded-2xl transition-all duration-300 ${theme.ring} ${isImageMode ? 'ring-2 ring-purple-500/50 bg-purple-950/10 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.1)]' : ''}`}>
               <div className="flex items-center pb-1 gap-1">
                 <button type="button" onClick={toggleQuickMenu} className={`p-2 text-gray-400 hover:text-white transition-all ${isQuickActionsOpen ? theme.text : ''}`}><MoreVertical size={20}/></button>
                 <div className="w-px h-5 bg-gray-700 mx-1"></div>
                 <input type="file" ref={fileInputRef} onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} className="hidden" accept={SUPPORTED_MIME_TYPES.join(',')} />
                 
-                <button type="button" onClick={() => { setIsImageMode(!isImageMode); if(!isImageMode) showToast("Görsel Modu Açık", "info"); else showToast("Görsel Modu Kapalı", "info"); }} className={`p-2 transition-all ${isImageMode ? 'text-purple-400 bg-purple-400/10 rounded-lg' : 'text-gray-400 hover:text-white'}`} title="Görsel Oluşturma Modu"><ImageIcon size={20}/></button>
+                <button type="button" onClick={() => { setIsImageMode(!isImageMode); if(!isImageMode) showToast("Görsel Modu Açık", "info"); else showToast("Görsel Modu Kapalı", "info"); }} className={`p-2 transition-all ${isImageMode ? 'text-purple-400 bg-purple-500/20 rounded-lg ring-1 ring-purple-500/50' : 'text-gray-400 hover:text-white'}`} title="Görsel Oluşturma Modu"><ImageIcon size={20}/></button>
 
                 <button type="button" onClick={() => fileInputRef.current?.click()} className={`p-2 hover:text-white transition-all ${pendingAttachment ? theme.text : 'text-gray-400'}`}><Paperclip size={20}/></button>
                 <button type="button" onClick={startVideo} className="p-2 text-gray-400 hover:text-white transition-all"><Camera size={20}/></button>
@@ -965,7 +1052,7 @@ const App: React.FC = () => {
                  {isLoading ? (
                     <button type="button" onClick={handleStopGeneration} className="p-2 rounded-full bg-red-900/50 text-red-500 hover:bg-red-900 animate-pulse"><StopCircle size={20}/></button>
                  ) : (
-                    <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all ${ (input.trim() || pendingAttachment) && !isLoading ? `${isImageMode ? 'bg-purple-600 hover:bg-purple-500' : theme.primary} text-white` : 'bg-gray-800 text-gray-500' }`}><Send size={20}/></button>
+                    <button type="submit" disabled={(!input.trim() && !pendingAttachment) || isLoading} className={`p-2 rounded-full transition-all ${ (input.trim() || pendingAttachment) && !isLoading ? `${isImageMode ? 'bg-purple-600 hover:bg-purple-500 shadow-lg shadow-purple-900/50' : theme.primary} text-white` : 'bg-gray-800 text-gray-500' }`}><Send size={20}/></button>
                  )}
               </div>
             </form>

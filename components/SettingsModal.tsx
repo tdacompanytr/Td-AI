@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Type, Keyboard, Zap, Monitor, Sliders, Volume2, Trash2, Info, ShieldAlert, Layout, Maximize, Minimize, Cpu, ArrowDownCircle, UserCircle, Bell, Clock, Activity, Download, Settings, DownloadCloud, Lock, Eye, EyeOff, Hash, MousePointerClick, Globe, Sparkles, Fingerprint, Circle, Mic2, Speaker, Music, Layers, Palette, Box, Shield, Terminal, Command, Camera, FileText, Moon, Sun, Beaker, Sidebar, MessageSquare, Scale, LifeBuoy, Mail, Copy, Code, Image as ImageIcon } from 'lucide-react';
+import { X, Check, Type, Keyboard, Zap, Monitor, Sliders, Volume2, Trash2, Info, ShieldAlert, Layout, Maximize, Minimize, Cpu, ArrowDownCircle, UserCircle, Bell, Clock, Activity, Download, Settings, DownloadCloud, Lock, Eye, EyeOff, Hash, MousePointerClick, Globe, Sparkles, Fingerprint, Circle, Mic2, Speaker, Music, Layers, Palette, Box, Shield, Terminal, Command, Camera, FileText, Moon, Sun, Beaker, Sidebar, MessageSquare, Scale, LifeBuoy, Mail, Copy, Code, Image as ImageIcon, Sigma } from 'lucide-react';
 import { THEMES } from '../utils/theme';
 
 interface SettingsModalProps {
@@ -156,6 +156,14 @@ const fontOptions = [
   { id: 'font-pixel', name: '8-Bit', desc: 'Retro', url: 'https://fonts.google.com/specimen/Press+Start+2P' },
 ];
 
+const PRESET_AVATARS = [
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23EF4444' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E",
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%233B82F6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E",
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2310B981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E",
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23F59E0B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E",
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238B5CF6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E"
+];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen, onClose, currentPersona, onSavePersona, currentColor, onSaveColor, fontSize, onSaveFontSize, 
   fontFamily = 'font-sans', onSaveFontFamily,
@@ -292,19 +300,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
               <section className="bg-gray-900/20 p-5 rounded-2xl border border-gray-800">
                 <h3 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2"><UserCircle size={16} /> Kimlik & Profil</h3>
-                <div className="flex flex-col md:flex-row gap-6">
+                <div className="flex flex-col md:flex-row gap-6 items-start">
                    <div className="flex flex-col items-center gap-3">
                       <div className="relative group">
-                         <div className="w-20 h-20 rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden flex items-center justify-center">
-                            {userAvatar ? <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" /> : <UserCircle size={40} className="text-gray-500" />}
+                         <div className="w-24 h-24 rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden flex items-center justify-center shadow-xl">
+                            {userAvatar ? (
+                                <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                            ) : (
+                                <UserCircle size={48} className="text-gray-500" />
+                            )}
                          </div>
-                         <button onClick={() => fileInputRef.current?.click()} className={`absolute bottom-0 right-0 p-1.5 rounded-full text-white shadow-lg hover:scale-110 active:scale-95 ${theme.primary}`}><Camera size={14} /></button>
+                         <button onClick={() => fileInputRef.current?.click()} className={`absolute bottom-0 right-0 p-2 rounded-full text-white shadow-lg hover:scale-110 active:scale-95 ${theme.primary} transition-all`} title="Fotoğraf Yükle"><Camera size={16} /></button>
                          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
                       </div>
+                      {userAvatar && (
+                          <button onClick={() => onSaveUserAvatar && onSaveUserAvatar(null)} className="text-xs text-red-400 hover:text-red-300 font-medium flex items-center gap-1 px-2 py-1 hover:bg-red-900/20 rounded"><Trash2 size={12} /> Kaldır</button>
+                      )}
                    </div>
-                   <div className="flex-1 grid md:grid-cols-2 gap-4">
-                      <div><label className="block text-sm font-medium text-gray-300 mb-2">Kullanıcı Adı</label><input type="text" value={localUsername} onChange={(e) => setLocalUsername(e.target.value)} className={`w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-${currentColor}-500 transition-colors`} /></div>
-                      <div><label className="block text-sm font-medium text-gray-300 mb-2">Gizli Mod</label><button onClick={() => onSaveIncognitoMode(!incognitoMode)} className={`w-full py-2.5 rounded-xl font-bold transition-all border flex items-center justify-center gap-2 ${incognitoMode ? 'bg-purple-600/20 border-purple-500 text-purple-400' : 'bg-gray-900 border-gray-800 text-gray-400'}`}>{incognitoMode ? <><EyeOff size={16}/> Aktif</> : <><Eye size={16}/> Pasif</>}</button></div>
+                   
+                   <div className="flex-1 w-full space-y-4">
+                      <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-2">Kullanıcı Adı</label>
+                              <input type="text" value={localUsername} onChange={(e) => setLocalUsername(e.target.value)} className={`w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-${currentColor}-500 transition-colors`} placeholder="Adınız" />
+                          </div>
+                          <div>
+                             <label className="block text-sm font-medium text-gray-300 mb-2">Hazır Avatarlar</label>
+                             <div className="flex gap-2 flex-wrap">
+                                {PRESET_AVATARS.map((avatar, index) => (
+                                    <button key={index} onClick={() => onSaveUserAvatar && onSaveUserAvatar(avatar)} className={`w-10 h-10 rounded-full bg-gray-900 border ${userAvatar === avatar ? `border-${currentColor}-500` : 'border-gray-800'} hover:border-gray-500 flex items-center justify-center p-2 transition-all hover:scale-110`}>
+                                        <img src={avatar} alt={`Preset ${index}`} className="w-full h-full" />
+                                    </button>
+                                ))}
+                             </div>
+                          </div>
+                      </div>
+                      <div><label className="block text-sm font-medium text-gray-300 mb-2">Gizli Mod</label><button onClick={() => onSaveIncognitoMode(!incognitoMode)} className={`w-full py-2.5 rounded-xl font-bold transition-all border flex items-center justify-center gap-2 ${incognitoMode ? 'bg-purple-600/20 border-purple-500 text-purple-400' : 'bg-gray-900 border-gray-800 text-gray-400'}`}>{incognitoMode ? <><EyeOff size={16}/> Aktif (Kayıt Tutulmaz)</> : <><Eye size={16}/> Pasif (Geçmiş Kaydedilir)</>}</button></div>
                    </div>
                 </div>
               </section>
@@ -508,7 +539,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                    <p className="text-xs text-purple-300/70">Bu özellikler geliştirme aşamasındadır ve kararsız olabilir.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <ToggleItem label="LaTeX Render" desc="Matematik formülleri" checked={renderLatex} onChange={onSaveRenderLatex} icon={SigmaIcon} />
+                   <ToggleItem label="LaTeX Render" desc="Matematik formülleri" checked={renderLatex} onChange={onSaveRenderLatex} icon={Sigma} />
                    <ToggleItem label="Otomatik Silme" desc="24s sonra geçmişi sil" checked={autoDelete} onChange={onSaveAutoDelete} icon={Trash2} />
                 </div>
              </div>
@@ -595,37 +626,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="bg-gray-900/30 rounded-2xl border border-gray-800 p-5">
-                      <div className="flex items-center gap-2 font-bold text-gray-300 uppercase text-xs tracking-wider mb-4">
-                         <Code size={14} className={theme.text} /> Geliştirici
+                      <div className="flex items-center gap-2 font-bold text-gray-300 uppercase text-xs tracking-wider mb-3">
+                        <Code size={14} /> Geliştirici
                       </div>
-                      <div className="font-bold text-white text-lg">Tda Company</div>
-                      <div className="mt-4 text-xs text-gray-600">© {new Date().getFullYear()} Tüm Hakları Saklıdır.</div>
+                      <div className="font-bold text-white">Tda Company</div>
                    </div>
-                   
                    <div className="bg-gray-900/30 rounded-2xl border border-gray-800 p-5">
-                      <div className="flex items-center gap-2 font-bold text-gray-300 uppercase text-xs tracking-wider mb-4">
-                         <Globe size={14} className={theme.text} /> Altyapı
+                      <div className="flex items-center gap-2 font-bold text-gray-300 uppercase text-xs tracking-wider mb-3">
+                        <Globe size={14} /> Web Sitesi
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                         <span className="px-2 py-1 rounded bg-gray-900 border border-gray-800 text-xs font-mono text-blue-400">React 19</span>
-                         <span className="px-2 py-1 rounded bg-gray-900 border border-gray-800 text-xs font-mono text-cyan-400">Tailwind CSS</span>
-                         <span className="px-2 py-1 rounded bg-gray-900 border border-gray-800 text-xs font-mono text-yellow-400">Vite</span>
-                         <span className="px-2 py-1 rounded bg-gray-900 border border-gray-800 text-xs font-mono text-green-400">Gemini SDK</span>
-                      </div>
+                      <a href="https://link.bilfen.com/TdaCompany" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-400 hover:underline">link.bilfen.com/TdaCompany</a>
                    </div>
                </div>
 
-               <div className="text-center pt-4 pb-2">
-                  <p className="text-xs text-gray-600 font-medium">Powered by Tda Company</p>
+               <div className="text-center text-xs text-gray-600 pt-8 border-t border-gray-800/50">
+                  &copy; {new Date().getFullYear()} Tda Company. Tüm hakları saklıdır.
                </div>
             </div>
           )}
 
         </div>
-        <div className="bg-gray-950 border-t border-gray-800 p-4 flex justify-end gap-3 shrink-0 z-20"><button onClick={() => onClose()} className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-gray-900">İptal</button><button onClick={handleSaveAll} className={`px-8 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg ${theme.primary} ${theme.primaryHover}`}>Kaydet</button></div>
+        
+        <div className="p-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex justify-end gap-3">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold text-gray-400 hover:bg-gray-800 transition-colors">İptal</button>
+            <button onClick={handleSaveAll} className={`px-6 py-2.5 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 ${theme.primary} ${theme.primaryHover}`}>Kaydet ve Çık</button>
+        </div>
+
       </div>
     </div>
   );
 };
-
-const SigmaIcon = ({size}: any) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 7V4H6l6 8-6 8h12v-3"/></svg>;

@@ -47,6 +47,55 @@ const handleGeminiError = (error: any): string => {
   return `❌ Beklenmedik bir hata oluştu: ${msg.substring(0, 100)}...`;
 };
 
+const getSafetySettings = (level?: 'low' | 'medium' | 'high' | 'none') => {
+    if (level === 'none') {
+        return [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ];
+    } else if (level === 'high') {
+         return [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+        ];
+    }
+    return [];
+};
+
+const prepareMediaParts = (mediaData: string, message: string) => {
+    let mimeType = 'image/jpeg'; 
+    let data = mediaData;
+
+    // Try to extract mime type from base64 header
+    const match = mediaData.match(/^data:(.+);base64,(.+)$/);
+    if (match) {
+      mimeType = match[1];
+      data = match[2];
+    } else {
+      // Fallback logic if regex fails but comma exists
+      const split = mediaData.split(',');
+      if (split.length > 1) {
+          data = split[1];
+          if (split[0].includes('png')) mimeType = 'image/png';
+          if (split[0].includes('webp')) mimeType = 'image/webp';
+          if (split[0].includes('mp4')) mimeType = 'video/mp4';
+          if (split[0].includes('webm')) mimeType = 'video/webm';
+      }
+    }
+
+    return [
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: data
+        }
+      },
+      { text: message }
+    ];
+};
+
 export const sendMessageToGemini = async (
   message: string,
   history: { role: 'user' | 'model'; parts: { text: string }[] }[],
@@ -69,22 +118,6 @@ export const sendMessageToGemini = async (
     const modelName = 'gemini-2.5-flash';
     const defaultPersona = `Sen Td AI'sın. Yardımcı, zeki ve samimi bir yapay zeka asistanısın.`;
 
-    // Safety Settings Mapping
-    let safetySettings = [];
-    if (config.safetyLevel === 'none') {
-        safetySettings = [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        ];
-    } else if (config.safetyLevel === 'high') {
-         safetySettings = [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
-        ];
-    }
-
     const chat = ai.chats.create({
       model: modelName,
       history: history,
@@ -95,48 +128,15 @@ export const sendMessageToGemini = async (
         topP: config.topP,
         frequencyPenalty: config.frequencyPenalty,
         presencePenalty: config.presencePenalty,
-        safetySettings: safetySettings,
+        safetySettings: getSafetySettings(config.safetyLevel),
       },
     });
 
     let result;
 
     if (mediaData) {
-      // Default mime type, though we try to extract it
-      let mimeType = 'image/jpeg'; 
-      let data = mediaData;
-
-      // Try to extract mime type from base64 header
-      const match = mediaData.match(/^data:(.+);base64,(.+)$/);
-      if (match) {
-        mimeType = match[1];
-        data = match[2];
-      } else {
-        // Fallback logic if regex fails but comma exists
-        const split = mediaData.split(',');
-        if (split.length > 1) {
-            data = split[1];
-            if (split[0].includes('png')) mimeType = 'image/png';
-            if (split[0].includes('webp')) mimeType = 'image/webp';
-            if (split[0].includes('mp4')) mimeType = 'video/mp4';
-            if (split[0].includes('webm')) mimeType = 'video/webm';
-        }
-      }
-
-      const parts: any[] = [
-        {
-          inlineData: {
-            mimeType: mimeType,
-            data: data
-          }
-        },
-        { text: message }
-      ];
-
-      // Pass parts directly as message for multimodal
-      result = await chat.sendMessage({ 
-        message: parts 
-      });
+      const parts = prepareMediaParts(mediaData, message);
+      result = await chat.sendMessage({ message: parts });
     } else {
       result = await chat.sendMessage({ message });
     }
@@ -148,7 +148,72 @@ export const sendMessageToGemini = async (
   }
 };
 
-export const generateImageWithGemini = async (prompt: string): Promise<string> => {
+export const sendMessageToGeminiStream = async (
+  message: string,
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[],
+  onUpdate: (text: string) => void,
+  mediaData?: string,
+  systemInstruction?: string,
+  config: {
+    temperature?: number;
+    maxOutputTokens?: number;
+    topP?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+    safetyLevel?: 'low' | 'medium' | 'high' | 'none';
+  } = {}
+): Promise<string> => {
+  if (!ai) {
+    throw new Error("API Key not configured");
+  }
+
+  try {
+    const modelName = 'gemini-2.5-flash';
+    const defaultPersona = `Sen Td AI'sın. Yardımcı, zeki ve samimi bir yapay zeka asistanısın.`;
+
+    const chat = ai.chats.create({
+      model: modelName,
+      history: history,
+      config: {
+        systemInstruction: systemInstruction || defaultPersona,
+        temperature: config.temperature ?? 0.7,
+        maxOutputTokens: config.maxOutputTokens,
+        topP: config.topP,
+        frequencyPenalty: config.frequencyPenalty,
+        presencePenalty: config.presencePenalty,
+        safetySettings: getSafetySettings(config.safetyLevel),
+      },
+    });
+
+    let resultStream;
+
+    if (mediaData) {
+      const parts = prepareMediaParts(mediaData, message);
+      resultStream = await chat.sendMessageStream({ message: parts });
+    } else {
+      resultStream = await chat.sendMessageStream({ message });
+    }
+
+    let fullText = '';
+    for await (const chunk of resultStream) {
+      const chunkText = chunk.text;
+      if (chunkText) {
+        fullText += chunkText;
+        onUpdate(fullText);
+      }
+    }
+
+    return fullText;
+  } catch (error) {
+    const userFriendlyError = handleGeminiError(error);
+    throw new Error(userFriendlyError);
+  }
+};
+
+export const generateImageWithGemini = async (
+  prompt: string,
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
+): Promise<string> => {
   if (!ai) {
     throw new Error("API Key not configured");
   }
@@ -159,7 +224,7 @@ export const generateImageWithGemini = async (prompt: string): Promise<string> =
       prompt: prompt,
       config: {
         numberOfImages: 1,
-        aspectRatio: '1:1',
+        aspectRatio: aspectRatio,
         outputMimeType: 'image/jpeg'
       }
     });
